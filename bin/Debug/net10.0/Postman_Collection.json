@@ -1,0 +1,403 @@
+{
+  "info": {
+    "name": "Attendance Management API",
+    "description": "Complete API collection for Attendance Management System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userName\": \"John Developer\",\n  \"email\": \"john.dev@company.com\",\n  \"password\": \"Pass@123\",\n  \"role\": \"developer\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.token) {",
+                  "    pm.environment.set(\"jwt_token\", jsonData.data.token);",
+                  "    pm.environment.set(\"user_id\", jsonData.data.userId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@attendance.com\",\n  \"password\": \"Admin@123\",\n  \"deviceId\": \"test-device-123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Clear Device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/cleardevice",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "cleardevice"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "logout"]
+            }
+          }
+        },
+        {
+          "name": "Get All Users (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/users",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "users"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Attendance",
+      "item": [
+        {
+          "name": "Mark In (Check-In)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "userId",
+                  "value": "{{user_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "attendanceDate",
+                  "value": "2026-02-08",
+                  "type": "text"
+                },
+                {
+                  "key": "inTime",
+                  "value": "09:15:30",
+                  "type": "text"
+                },
+                {
+                  "key": "latitude",
+                  "value": "28.7041",
+                  "type": "text"
+                },
+                {
+                  "key": "longitude",
+                  "value": "77.1025",
+                  "type": "text"
+                },
+                {
+                  "key": "locationAddress",
+                  "value": "Connaught Place, New Delhi, India",
+                  "type": "text"
+                },
+                {
+                  "key": "selfieImage",
+                  "type": "file",
+                  "src": "path/to/your/image.jpg"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attendance/markin",
+              "host": ["{{base_url}}"],
+              "path": ["api", "attendance", "markin"]
+            }
+          }
+        },
+        {
+          "name": "Mark Out (Check-Out)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "userId",
+                  "value": "{{user_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "attendanceDate",
+                  "value": "2026-02-08",
+                  "type": "text"
+                },
+                {
+                  "key": "outTime",
+                  "value": "18:30:00",
+                  "type": "text"
+                },
+                {
+                  "key": "latitude",
+                  "value": "28.7045",
+                  "type": "text"
+                },
+                {
+                  "key": "longitude",
+                  "value": "77.1030",
+                  "type": "text"
+                },
+                {
+                  "key": "locationAddress",
+                  "value": "Barakhamba Road, New Delhi, India",
+                  "type": "text"
+                },
+                {
+                  "key": "selfieImage",
+                  "type": "file",
+                  "src": "path/to/your/image.jpg"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attendance/markout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "attendance", "markout"]
+            }
+          }
+        },
+        {
+          "name": "Get Today's Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/attendance/todaystatus?userId={{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "attendance", "todaystatus"],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "{{user_id}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get User Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/attendance/usersummary?userId={{user_id}}&fromDate=2026-01-01&toDate=2026-02-28",
+              "host": ["{{base_url}}"],
+              "path": ["api", "attendance", "usersummary"],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "{{user_id}}"
+                },
+                {
+                  "key": "fromDate",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "toDate",
+                  "value": "2026-02-28"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Admin Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/attendance/adminsummary?fromDate=2026-01-01&toDate=2026-02-28&filterType=all",
+              "host": ["{{base_url}}"],
+              "path": ["api", "attendance", "adminsummary"],
+              "query": [
+                {
+                  "key": "fromDate",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "toDate",
+                  "value": "2026-02-28"
+                },
+                {
+                  "key": "filterType",
+                  "value": "all"
+                },
+                {
+                  "key": "userId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "role",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Export User Summary PDF",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{user_id}},\n  \"fromDate\": \"2026-01-01\",\n  \"toDate\": \"2026-02-28\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attendance/exportusersummary",
+              "host": ["{{base_url}}"],
+              "path": ["api", "attendance", "exportusersummary"]
+            }
+          }
+        },
+        {
+          "name": "Export Admin Summary PDF",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromDate\": \"2026-01-01\",\n  \"toDate\": \"2026-02-28\",\n  \"filterType\": \"all\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attendance/exportadminsummary",
+              "host": ["{{base_url}}"],
+              "path": ["api", "attendance", "exportadminsummary"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://localhost:7001"
+    },
+    {
+      "key": "jwt_token",
+      "value": ""
+    },
+    {
+      "key": "user_id",
+      "value": ""
+    }
+  ]
+}
