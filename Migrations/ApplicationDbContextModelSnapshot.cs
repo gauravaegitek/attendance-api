@@ -165,6 +165,70 @@ namespace attendance_api.Migrations
                     b.ToTable("holidays");
                 });
 
+            modelBuilder.Entity("attendance_api.Models.PerformanceReview", b =>
+                {
+                    b.Property<int>("ReviewId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("reviewid");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ReviewId"));
+
+                    b.Property<decimal>("AttendanceScore")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("attendancescore");
+
+                    b.Property<DateTime>("CreatedOn")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("createdon")
+                        .HasDefaultValueSql("GETDATE()");
+
+                    b.Property<decimal>("FinalScore")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("finalscore");
+
+                    b.Property<string>("Grade")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)")
+                        .HasDefaultValue("C")
+                        .HasColumnName("grade");
+
+                    b.Property<decimal?>("ManualScore")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("manualscore");
+
+                    b.Property<int>("ReviewMonth")
+                        .HasColumnType("int")
+                        .HasColumnName("reviewmonth");
+
+                    b.Property<int>("ReviewYear")
+                        .HasColumnType("int")
+                        .HasColumnName("reviewyear");
+
+                    b.Property<int?>("ReviewedByUserId")
+                        .HasColumnType("int")
+                        .HasColumnName("reviewedbyuserid");
+
+                    b.Property<string>("ReviewerComments")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("reviewercomments");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("userid");
+
+                    b.HasKey("ReviewId");
+
+                    b.HasIndex("UserId", "ReviewMonth", "ReviewYear")
+                        .IsUnique();
+
+                    b.ToTable("PerformanceReviews");
+                });
+
             modelBuilder.Entity("attendance_api.Models.Role", b =>
                 {
                     b.Property<int>("RoleId")
@@ -231,6 +295,11 @@ namespace attendance_api.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("UserId"));
 
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("address");
+
                     b.Property<string>("ConfirmPassword")
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)")
@@ -242,6 +311,20 @@ namespace attendance_api.Migrations
                         .HasColumnName("createdon")
                         .HasDefaultValueSql("GETDATE()");
 
+                    b.Property<DateTime?>("DateOfBirth")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("dateofbirth");
+
+                    b.Property<string>("Department")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("department");
+
+                    b.Property<string>("Designation")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("designation");
+
                     b.Property<string>("DeviceId")
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)")
@@ -252,6 +335,11 @@ namespace attendance_api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)")
                         .HasColumnName("email");
+
+                    b.Property<string>("EmergencyContact")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("emergencycontact");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -273,6 +361,16 @@ namespace attendance_api.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)")
                         .HasColumnName("passwordhash");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("ProfilePhoto")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("profilephoto");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -306,17 +404,86 @@ namespace attendance_api.Migrations
                             CreatedOn = new DateTime(2026, 2, 14, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             Email = "admin@attendance.com",
                             IsActive = true,
-                            PasswordHash = "$2a$11$lHg4uIoUoQB47u6MCIPqAOntnHdDPvWy0sHPpJvrAayIo.Tvb4qZq",
+                            PasswordHash = "$2a$11$YQxcO.SNcYkYspNawN3bUu9GCv2wCx3XPONoZZ/r6OfQDD7p/YYR2",
                             Role = "admin",
                             RoleId = 1,
                             UserName = "Admin"
                         });
                 });
 
+            modelBuilder.Entity("attendance_api.Models.WFHRequest", b =>
+                {
+                    b.Property<int>("WFHId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("wfhid");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("WFHId"));
+
+                    b.Property<int?>("ApprovedByUserId")
+                        .HasColumnType("int")
+                        .HasColumnName("approvedbyuserid");
+
+                    b.Property<DateTime?>("ApprovedOn")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("approvedon");
+
+                    b.Property<DateTime>("CreatedOn")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasColumnName("createdon")
+                        .HasDefaultValueSql("GETDATE()");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("rejectionreason");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Pending")
+                        .HasColumnName("status");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("userid");
+
+                    b.Property<DateTime>("WFHDate")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("wfhdate");
+
+                    b.HasKey("WFHId");
+
+                    b.HasIndex("UserId", "WFHDate")
+                        .IsUnique();
+
+                    b.ToTable("WFHRequests");
+                });
+
             modelBuilder.Entity("attendance_api.Models.Attendance", b =>
                 {
                     b.HasOne("attendance_api.Models.User", "User")
                         .WithMany("Attendances")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("attendance_api.Models.PerformanceReview", b =>
+                {
+                    b.HasOne("attendance_api.Models.User", "User")
+                        .WithMany("PerformanceReviews")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -334,6 +501,17 @@ namespace attendance_api.Migrations
                     b.Navigation("RoleEntity");
                 });
 
+            modelBuilder.Entity("attendance_api.Models.WFHRequest", b =>
+                {
+                    b.HasOne("attendance_api.Models.User", "User")
+                        .WithMany("WFHRequests")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("attendance_api.Models.Role", b =>
                 {
                     b.Navigation("Users");
@@ -342,6 +520,10 @@ namespace attendance_api.Migrations
             modelBuilder.Entity("attendance_api.Models.User", b =>
                 {
                     b.Navigation("Attendances");
+
+                    b.Navigation("PerformanceReviews");
+
+                    b.Navigation("WFHRequests");
                 });
 #pragma warning restore 612, 618
         }
