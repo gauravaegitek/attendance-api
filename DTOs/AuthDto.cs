@@ -182,6 +182,10 @@ namespace attendance_api.DTOs
 
         [Required]
         public string DeviceId { get; set; } = string.Empty;
+
+        public string? DeviceType { get; set; }   // <-- NEW
+        public string? DeviceName { get; set; }   // <-- NEW
+
     }
 
     public class LoginResponseDto
@@ -192,6 +196,7 @@ namespace attendance_api.DTOs
         public string Role { get; set; } = string.Empty;
         public string Token { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
+        public int LoginHistoryId { get; set; }
     }
 
     public class ClearDeviceDto

@@ -106,6 +106,10 @@ namespace attendance_api.Models
         [Column("userid")]
         public int UserId { get; set; }
 
+        [Column("name")]
+        [MaxLength(200)]
+        public string? Name { get; set; }
+
         [Required]
         [Column("attendancedate")]
         public DateTime AttendanceDate { get; set; }

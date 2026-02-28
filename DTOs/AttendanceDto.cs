@@ -93,17 +93,17 @@ namespace attendance_api.DTOs
         public DateTime ToDate { get; set; }
     }
 
-    public class ExportUserSummaryDto
-    {
-        // UserId will be auto-populated from JWT token
-        public int UserId { get; set; }
+    // public class ExportUserSummaryDto
+    // {
+    //     // UserId will be auto-populated from JWT token
+    //     public int UserId { get; set; }
 
-        [Required]
-        public DateTime FromDate { get; set; }
+    //     [Required]
+    //     public DateTime FromDate { get; set; }
         
-        [Required]
-        public DateTime ToDate { get; set; }
-    }
+    //     [Required]
+    //     public DateTime ToDate { get; set; }
+    // }
 
     public class ExportAdminSummaryDto
     {
