@@ -21,11 +21,13 @@
 
 //         // GET: api/role
 //         [HttpGet]
+//         [AllowAnonymous] // ← ONLY CHANGE — register screen ke liye public
 //         public async Task<ActionResult<ApiResponse<List<RoleListDto>>>> GetAllRoles()
 //         {
 //             try
 //             {
 //                 var roles = await _context.Roles
+//                     .Where(r => r.IsActive) // ← sirf active roles
 //                     .OrderBy(r => r.RoleName)
 //                     .Select(r => new RoleListDto
 //                     {
@@ -107,7 +109,6 @@
 //         {
 //             try
 //             {
-//                 // Check if role name already exists
 //                 var existingRole = await _context.Roles
 //                     .FirstOrDefaultAsync(r => r.RoleName.ToLower() == dto.RoleName.ToLower());
 
@@ -177,7 +178,6 @@
 //                     });
 //                 }
 
-//                 // Check if new role name conflicts with existing role
 //                 var existingRole = await _context.Roles
 //                     .FirstOrDefaultAsync(r => r.RoleName.ToLower() == dto.RoleName.ToLower() && r.RoleId != id);
 
@@ -242,7 +242,6 @@
 //                     });
 //                 }
 
-//                 // Check if role is assigned to any users
 //                 var usersWithRole = await _context.Users.AnyAsync(u => u.RoleId == id);
 
 //                 if (usersWithRole)
@@ -281,6 +280,13 @@
 
 
 
+
+
+
+
+
+
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -293,7 +299,7 @@ namespace attendance_api.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [Authorize(Roles = "admin")]
-    public class RoleController : ControllerBase
+    public class RoleController : BaseController
     {
         private readonly ApplicationDbContext _context;
 
@@ -302,258 +308,133 @@ namespace attendance_api.Controllers
             _context = context;
         }
 
-        // GET: api/role
         [HttpGet]
-        [AllowAnonymous] // ← ONLY CHANGE — register screen ke liye public
+        [AllowAnonymous]
         public async Task<ActionResult<ApiResponse<List<RoleListDto>>>> GetAllRoles()
         {
             try
             {
                 var roles = await _context.Roles
-                    .Where(r => r.IsActive) // ← sirf active roles
+                    .Where(r => r.IsActive)
                     .OrderBy(r => r.RoleName)
                     .Select(r => new RoleListDto
                     {
-                        RoleId = r.RoleId,
-                        RoleName = r.RoleName,
-                        Description = r.Description,
+                        RoleId         = r.RoleId,
+                        RoleName       = r.RoleName,
+                        Description    = r.Description,
                         RequiresSelfie = r.RequiresSelfie,
-                        IsActive = r.IsActive,
-                        CreatedOn = r.CreatedOn
+                        IsActive       = r.IsActive,
+                        CreatedOn      = r.CreatedOn
                     })
                     .ToListAsync();
 
-                return Ok(new ApiResponse<List<RoleListDto>>
-                {
-                    Success = true,
-                    Message = "Roles retrieved successfully",
-                    Data = roles
-                });
+                return ApiOk("Roles retrieved successfully", roles);
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<List<RoleListDto>>
-                {
-                    Success = false,
-                    Message = "Failed to retrieve roles",
-                    Errors = new List<string> { ex.Message }
-                });
-            }
+            catch (Exception ex) { return ApiServerError("Failed to retrieve roles", ex); }
         }
 
-        // GET: api/role/{id}
         [HttpGet("{id}")]
         public async Task<ActionResult<ApiResponse<RoleListDto>>> GetRole(int id)
         {
             try
             {
                 var role = await _context.Roles.FindAsync(id);
+                if (role == null) return ApiNotFound("Role not found");
 
-                if (role == null)
+                return ApiOk("Role retrieved successfully", new RoleListDto
                 {
-                    return NotFound(new ApiResponse<RoleListDto>
-                    {
-                        Success = false,
-                        Message = "Role not found"
-                    });
-                }
-
-                var roleDto = new RoleListDto
-                {
-                    RoleId = role.RoleId,
-                    RoleName = role.RoleName,
-                    Description = role.Description,
+                    RoleId         = role.RoleId,
+                    RoleName       = role.RoleName,
+                    Description    = role.Description,
                     RequiresSelfie = role.RequiresSelfie,
-                    IsActive = role.IsActive,
-                    CreatedOn = role.CreatedOn
-                };
-
-                return Ok(new ApiResponse<RoleListDto>
-                {
-                    Success = true,
-                    Message = "Role retrieved successfully",
-                    Data = roleDto
+                    IsActive       = role.IsActive,
+                    CreatedOn      = role.CreatedOn
                 });
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<RoleListDto>
-                {
-                    Success = false,
-                    Message = "Failed to retrieve role",
-                    Errors = new List<string> { ex.Message }
-                });
-            }
+            catch (Exception ex) { return ApiServerError("Failed to retrieve role", ex); }
         }
 
-        // POST: api/role
         [HttpPost]
         public async Task<ActionResult<ApiResponse<RoleListDto>>> CreateRole([FromBody] RoleDto dto)
         {
             try
             {
-                var existingRole = await _context.Roles
-                    .FirstOrDefaultAsync(r => r.RoleName.ToLower() == dto.RoleName.ToLower());
-
-                if (existingRole != null)
-                {
-                    return BadRequest(new ApiResponse<RoleListDto>
-                    {
-                        Success = false,
-                        Message = "Role name already exists"
-                    });
-                }
+                var existing = await _context.Roles.FirstOrDefaultAsync(r => r.RoleName.ToLower() == dto.RoleName.ToLower());
+                if (existing != null) return ApiBadRequest("Role name already exists");
 
                 var role = new Role
                 {
-                    RoleName = dto.RoleName,
-                    Description = dto.Description,
+                    RoleName       = dto.RoleName,
+                    Description    = dto.Description,
                     RequiresSelfie = dto.RequiresSelfie,
-                    IsActive = dto.IsActive,
-                    CreatedOn = DateTime.Now
+                    IsActive       = dto.IsActive,
+                    CreatedOn      = DateTime.Now
                 };
 
                 _context.Roles.Add(role);
                 await _context.SaveChangesAsync();
 
-                var responseDto = new RoleListDto
+                return ApiOk("Role created successfully", new RoleListDto
                 {
-                    RoleId = role.RoleId,
-                    RoleName = role.RoleName,
-                    Description = role.Description,
+                    RoleId         = role.RoleId,
+                    RoleName       = role.RoleName,
+                    Description    = role.Description,
                     RequiresSelfie = role.RequiresSelfie,
-                    IsActive = role.IsActive,
-                    CreatedOn = role.CreatedOn
-                };
-
-                return CreatedAtAction(nameof(GetRole), new { id = role.RoleId }, new ApiResponse<RoleListDto>
-                {
-                    Success = true,
-                    Message = "Role created successfully",
-                    Data = responseDto
+                    IsActive       = role.IsActive,
+                    CreatedOn      = role.CreatedOn
                 });
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<RoleListDto>
-                {
-                    Success = false,
-                    Message = "Failed to create role",
-                    Errors = new List<string> { ex.Message }
-                });
-            }
+            catch (Exception ex) { return ApiServerError("Failed to create role", ex); }
         }
 
-        // PUT: api/role/{id}
         [HttpPut("{id}")]
         public async Task<ActionResult<ApiResponse<RoleListDto>>> UpdateRole(int id, [FromBody] RoleDto dto)
         {
             try
             {
                 var role = await _context.Roles.FindAsync(id);
+                if (role == null) return ApiNotFound("Role not found");
 
-                if (role == null)
-                {
-                    return NotFound(new ApiResponse<RoleListDto>
-                    {
-                        Success = false,
-                        Message = "Role not found"
-                    });
-                }
+                var existing = await _context.Roles.FirstOrDefaultAsync(r => r.RoleName.ToLower() == dto.RoleName.ToLower() && r.RoleId != id);
+                if (existing != null) return ApiBadRequest("Role name already exists");
 
-                var existingRole = await _context.Roles
-                    .FirstOrDefaultAsync(r => r.RoleName.ToLower() == dto.RoleName.ToLower() && r.RoleId != id);
-
-                if (existingRole != null)
-                {
-                    return BadRequest(new ApiResponse<RoleListDto>
-                    {
-                        Success = false,
-                        Message = "Role name already exists"
-                    });
-                }
-
-                role.RoleName = dto.RoleName;
-                role.Description = dto.Description;
+                role.RoleName       = dto.RoleName;
+                role.Description    = dto.Description;
                 role.RequiresSelfie = dto.RequiresSelfie;
-                role.IsActive = dto.IsActive;
+                role.IsActive       = dto.IsActive;
 
                 await _context.SaveChangesAsync();
 
-                var responseDto = new RoleListDto
+                return ApiOk("Role updated successfully", new RoleListDto
                 {
-                    RoleId = role.RoleId,
-                    RoleName = role.RoleName,
-                    Description = role.Description,
+                    RoleId         = role.RoleId,
+                    RoleName       = role.RoleName,
+                    Description    = role.Description,
                     RequiresSelfie = role.RequiresSelfie,
-                    IsActive = role.IsActive,
-                    CreatedOn = role.CreatedOn
-                };
-
-                return Ok(new ApiResponse<RoleListDto>
-                {
-                    Success = true,
-                    Message = "Role updated successfully",
-                    Data = responseDto
+                    IsActive       = role.IsActive,
+                    CreatedOn      = role.CreatedOn
                 });
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<RoleListDto>
-                {
-                    Success = false,
-                    Message = "Failed to update role",
-                    Errors = new List<string> { ex.Message }
-                });
-            }
+            catch (Exception ex) { return ApiServerError("Failed to update role", ex); }
         }
 
-        // DELETE: api/role/{id}
         [HttpDelete("{id}")]
         public async Task<ActionResult<ApiResponse<object>>> DeleteRole(int id)
         {
             try
             {
                 var role = await _context.Roles.FindAsync(id);
-
-                if (role == null)
-                {
-                    return NotFound(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "Role not found"
-                    });
-                }
+                if (role == null) return ApiNotFound("Role not found");
 
                 var usersWithRole = await _context.Users.AnyAsync(u => u.RoleId == id);
-
-                if (usersWithRole)
-                {
-                    return BadRequest(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "Cannot delete role as it is assigned to users"
-                    });
-                }
+                if (usersWithRole) return ApiBadRequest("Cannot delete role as it is assigned to users");
 
                 _context.Roles.Remove(role);
                 await _context.SaveChangesAsync();
 
-                return Ok(new ApiResponse<object>
-                {
-                    Success = true,
-                    Message = "Role deleted successfully"
-                });
+                return ApiOk("Role deleted successfully");
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<object>
-                {
-                    Success = false,
-                    Message = "Failed to delete role",
-                    Errors = new List<string> { ex.Message }
-                });
-            }
+            catch (Exception ex) { return ApiServerError("Failed to delete role", ex); }
         }
     }
 }

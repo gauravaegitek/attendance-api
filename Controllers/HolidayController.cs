@@ -9,7 +9,7 @@
 // {
 //     [Route("api/[controller]")]
 //     [ApiController]
-//     [Authorize(Roles = "admin")]
+//     [Authorize] // Sabhi authenticated users access kar sakte hain
 //     public class HolidayController : ControllerBase
 //     {
 //         private readonly ApplicationDbContext _context;
@@ -19,7 +19,7 @@
 //             _context = context;
 //         }
 
-//         // GET: api/holiday
+//         // GET: api/holiday - All authenticated users
 //         [HttpGet]
 //         public async Task<ActionResult<ApiResponse<List<HolidayListDto>>>> GetAllHolidays()
 //         {
@@ -56,7 +56,7 @@
 //             }
 //         }
 
-//         // GET: api/holiday/upcoming
+//         // GET: api/holiday/upcoming - All authenticated users
 //         [HttpGet("upcoming")]
 //         public async Task<ActionResult<ApiResponse<List<HolidayListDto>>>> GetUpcomingHolidays()
 //         {
@@ -95,7 +95,7 @@
 //             }
 //         }
 
-//         // GET: api/holiday/{id}
+//         // GET: api/holiday/{id} - All authenticated users
 //         [HttpGet("{id}")]
 //         public async Task<ActionResult<ApiResponse<HolidayListDto>>> GetHoliday(int id)
 //         {
@@ -140,13 +140,13 @@
 //             }
 //         }
 
-//         // POST: api/holiday
+//         // POST: api/holiday - Only admin
 //         [HttpPost]
+//         [Authorize(Roles = "admin")]
 //         public async Task<ActionResult<ApiResponse<HolidayListDto>>> CreateHoliday([FromBody] HolidayDto dto)
 //         {
 //             try
 //             {
-//                 // Check if holiday already exists for the same date
 //                 var existingHoliday = await _context.Holidays
 //                     .FirstOrDefaultAsync(h => h.HolidayDate.Date == dto.HolidayDate.Date);
 
@@ -199,8 +199,9 @@
 //             }
 //         }
 
-//         // PUT: api/holiday/{id}
+//         // PUT: api/holiday/{id} - Only admin
 //         [HttpPut("{id}")]
+//         [Authorize(Roles = "admin")]
 //         public async Task<ActionResult<ApiResponse<HolidayListDto>>> UpdateHoliday(int id, [FromBody] HolidayDto dto)
 //         {
 //             try
@@ -216,7 +217,6 @@
 //                     });
 //                 }
 
-//                 // Check if another holiday exists for the new date
 //                 var existingHoliday = await _context.Holidays
 //                     .FirstOrDefaultAsync(h => h.HolidayDate.Date == dto.HolidayDate.Date && h.HolidayId != id);
 
@@ -264,8 +264,9 @@
 //             }
 //         }
 
-//         // DELETE: api/holiday/{id}
+//         // DELETE: api/holiday/{id} - Only admin
 //         [HttpDelete("{id}")]
+//         [Authorize(Roles = "admin")]
 //         public async Task<ActionResult<ApiResponse<object>>> DeleteHoliday(int id)
 //         {
 //             try
@@ -311,6 +312,8 @@
 
 
 
+
+// ===================== HolidayController.cs =====================
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -322,8 +325,8 @@ namespace attendance_api.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize] // Sabhi authenticated users access kar sakte hain
-    public class HolidayController : ControllerBase
+    [Authorize]
+    public class HolidayController : BaseController
     {
         private readonly ApplicationDbContext _context;
 
@@ -332,7 +335,6 @@ namespace attendance_api.Controllers
             _context = context;
         }
 
-        // GET: api/holiday - All authenticated users
         [HttpGet]
         public async Task<ActionResult<ApiResponse<List<HolidayListDto>>>> GetAllHolidays()
         {
@@ -342,34 +344,20 @@ namespace attendance_api.Controllers
                     .OrderBy(h => h.HolidayDate)
                     .Select(h => new HolidayListDto
                     {
-                        HolidayId = h.HolidayId,
+                        HolidayId   = h.HolidayId,
                         HolidayName = h.HolidayName,
                         HolidayDate = h.HolidayDate,
                         Description = h.Description,
-                        IsActive = h.IsActive,
-                        CreatedOn = h.CreatedOn
+                        IsActive    = h.IsActive,
+                        CreatedOn   = h.CreatedOn
                     })
                     .ToListAsync();
 
-                return Ok(new ApiResponse<List<HolidayListDto>>
-                {
-                    Success = true,
-                    Message = "Holidays retrieved successfully",
-                    Data = holidays
-                });
+                return ApiOk("Holidays retrieved successfully", holidays);
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<List<HolidayListDto>>
-                {
-                    Success = false,
-                    Message = "Failed to retrieve holidays",
-                    Errors = new List<string> { ex.Message }
-                });
-            }
+            catch (Exception ex) { return ApiServerError("Failed to retrieve holidays", ex); }
         }
 
-        // GET: api/holiday/upcoming - All authenticated users
         [HttpGet("upcoming")]
         public async Task<ActionResult<ApiResponse<List<HolidayListDto>>>> GetUpcomingHolidays()
         {
@@ -381,138 +369,75 @@ namespace attendance_api.Controllers
                     .OrderBy(h => h.HolidayDate)
                     .Select(h => new HolidayListDto
                     {
-                        HolidayId = h.HolidayId,
+                        HolidayId   = h.HolidayId,
                         HolidayName = h.HolidayName,
                         HolidayDate = h.HolidayDate,
                         Description = h.Description,
-                        IsActive = h.IsActive,
-                        CreatedOn = h.CreatedOn
+                        IsActive    = h.IsActive,
+                        CreatedOn   = h.CreatedOn
                     })
                     .ToListAsync();
 
-                return Ok(new ApiResponse<List<HolidayListDto>>
-                {
-                    Success = true,
-                    Message = "Upcoming holidays retrieved successfully",
-                    Data = holidays
-                });
+                return ApiOk("Upcoming holidays retrieved successfully", holidays);
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<List<HolidayListDto>>
-                {
-                    Success = false,
-                    Message = "Failed to retrieve upcoming holidays",
-                    Errors = new List<string> { ex.Message }
-                });
-            }
+            catch (Exception ex) { return ApiServerError("Failed to retrieve upcoming holidays", ex); }
         }
 
-        // GET: api/holiday/{id} - All authenticated users
         [HttpGet("{id}")]
         public async Task<ActionResult<ApiResponse<HolidayListDto>>> GetHoliday(int id)
         {
             try
             {
                 var holiday = await _context.Holidays.FindAsync(id);
+                if (holiday == null) return ApiNotFound("Holiday not found");
 
-                if (holiday == null)
+                return ApiOk("Holiday retrieved successfully", new HolidayListDto
                 {
-                    return NotFound(new ApiResponse<HolidayListDto>
-                    {
-                        Success = false,
-                        Message = "Holiday not found"
-                    });
-                }
-
-                var holidayDto = new HolidayListDto
-                {
-                    HolidayId = holiday.HolidayId,
+                    HolidayId   = holiday.HolidayId,
                     HolidayName = holiday.HolidayName,
                     HolidayDate = holiday.HolidayDate,
                     Description = holiday.Description,
-                    IsActive = holiday.IsActive,
-                    CreatedOn = holiday.CreatedOn
-                };
-
-                return Ok(new ApiResponse<HolidayListDto>
-                {
-                    Success = true,
-                    Message = "Holiday retrieved successfully",
-                    Data = holidayDto
+                    IsActive    = holiday.IsActive,
+                    CreatedOn   = holiday.CreatedOn
                 });
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<HolidayListDto>
-                {
-                    Success = false,
-                    Message = "Failed to retrieve holiday",
-                    Errors = new List<string> { ex.Message }
-                });
-            }
+            catch (Exception ex) { return ApiServerError("Failed to retrieve holiday", ex); }
         }
 
-        // POST: api/holiday - Only admin
         [HttpPost]
         [Authorize(Roles = "admin")]
         public async Task<ActionResult<ApiResponse<HolidayListDto>>> CreateHoliday([FromBody] HolidayDto dto)
         {
             try
             {
-                var existingHoliday = await _context.Holidays
-                    .FirstOrDefaultAsync(h => h.HolidayDate.Date == dto.HolidayDate.Date);
-
-                if (existingHoliday != null)
-                {
-                    return BadRequest(new ApiResponse<HolidayListDto>
-                    {
-                        Success = false,
-                        Message = "A holiday already exists for this date"
-                    });
-                }
+                var existing = await _context.Holidays.FirstOrDefaultAsync(h => h.HolidayDate.Date == dto.HolidayDate.Date);
+                if (existing != null) return ApiBadRequest("A holiday already exists for this date");
 
                 var holiday = new Holiday
                 {
                     HolidayName = dto.HolidayName,
                     HolidayDate = dto.HolidayDate.Date,
                     Description = dto.Description,
-                    IsActive = dto.IsActive,
-                    CreatedOn = DateTime.Now
+                    IsActive    = dto.IsActive,
+                    CreatedOn   = DateTime.Now
                 };
 
                 _context.Holidays.Add(holiday);
                 await _context.SaveChangesAsync();
 
-                var responseDto = new HolidayListDto
+                return ApiOk("Holiday created successfully", new HolidayListDto
                 {
-                    HolidayId = holiday.HolidayId,
+                    HolidayId   = holiday.HolidayId,
                     HolidayName = holiday.HolidayName,
                     HolidayDate = holiday.HolidayDate,
                     Description = holiday.Description,
-                    IsActive = holiday.IsActive,
-                    CreatedOn = holiday.CreatedOn
-                };
-
-                return CreatedAtAction(nameof(GetHoliday), new { id = holiday.HolidayId }, new ApiResponse<HolidayListDto>
-                {
-                    Success = true,
-                    Message = "Holiday created successfully",
-                    Data = responseDto
+                    IsActive    = holiday.IsActive,
+                    CreatedOn   = holiday.CreatedOn
                 });
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<HolidayListDto>
-                {
-                    Success = false,
-                    Message = "Failed to create holiday",
-                    Errors = new List<string> { ex.Message }
-                });
-            }
+            catch (Exception ex) { return ApiServerError("Failed to create holiday", ex); }
         }
 
-        // PUT: api/holiday/{id} - Only admin
         [HttpPut("{id}")]
         [Authorize(Roles = "admin")]
         public async Task<ActionResult<ApiResponse<HolidayListDto>>> UpdateHoliday(int id, [FromBody] HolidayDto dto)
@@ -520,64 +445,31 @@ namespace attendance_api.Controllers
             try
             {
                 var holiday = await _context.Holidays.FindAsync(id);
+                if (holiday == null) return ApiNotFound("Holiday not found");
 
-                if (holiday == null)
-                {
-                    return NotFound(new ApiResponse<HolidayListDto>
-                    {
-                        Success = false,
-                        Message = "Holiday not found"
-                    });
-                }
-
-                var existingHoliday = await _context.Holidays
-                    .FirstOrDefaultAsync(h => h.HolidayDate.Date == dto.HolidayDate.Date && h.HolidayId != id);
-
-                if (existingHoliday != null)
-                {
-                    return BadRequest(new ApiResponse<HolidayListDto>
-                    {
-                        Success = false,
-                        Message = "A holiday already exists for this date"
-                    });
-                }
+                var existing = await _context.Holidays.FirstOrDefaultAsync(h => h.HolidayDate.Date == dto.HolidayDate.Date && h.HolidayId != id);
+                if (existing != null) return ApiBadRequest("A holiday already exists for this date");
 
                 holiday.HolidayName = dto.HolidayName;
                 holiday.HolidayDate = dto.HolidayDate.Date;
                 holiday.Description = dto.Description;
-                holiday.IsActive = dto.IsActive;
+                holiday.IsActive    = dto.IsActive;
 
                 await _context.SaveChangesAsync();
 
-                var responseDto = new HolidayListDto
+                return ApiOk("Holiday updated successfully", new HolidayListDto
                 {
-                    HolidayId = holiday.HolidayId,
+                    HolidayId   = holiday.HolidayId,
                     HolidayName = holiday.HolidayName,
                     HolidayDate = holiday.HolidayDate,
                     Description = holiday.Description,
-                    IsActive = holiday.IsActive,
-                    CreatedOn = holiday.CreatedOn
-                };
-
-                return Ok(new ApiResponse<HolidayListDto>
-                {
-                    Success = true,
-                    Message = "Holiday updated successfully",
-                    Data = responseDto
+                    IsActive    = holiday.IsActive,
+                    CreatedOn   = holiday.CreatedOn
                 });
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<HolidayListDto>
-                {
-                    Success = false,
-                    Message = "Failed to update holiday",
-                    Errors = new List<string> { ex.Message }
-                });
-            }
+            catch (Exception ex) { return ApiServerError("Failed to update holiday", ex); }
         }
 
-        // DELETE: api/holiday/{id} - Only admin
         [HttpDelete("{id}")]
         [Authorize(Roles = "admin")]
         public async Task<ActionResult<ApiResponse<object>>> DeleteHoliday(int id)
@@ -585,34 +477,14 @@ namespace attendance_api.Controllers
             try
             {
                 var holiday = await _context.Holidays.FindAsync(id);
-
-                if (holiday == null)
-                {
-                    return NotFound(new ApiResponse<object>
-                    {
-                        Success = false,
-                        Message = "Holiday not found"
-                    });
-                }
+                if (holiday == null) return ApiNotFound("Holiday not found");
 
                 _context.Holidays.Remove(holiday);
                 await _context.SaveChangesAsync();
 
-                return Ok(new ApiResponse<object>
-                {
-                    Success = true,
-                    Message = "Holiday deleted successfully"
-                });
+                return ApiOk("Holiday deleted successfully");
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<object>
-                {
-                    Success = false,
-                    Message = "Failed to delete holiday",
-                    Errors = new List<string> { ex.Message }
-                });
-            }
+            catch (Exception ex) { return ApiServerError("Failed to delete holiday", ex); }
         }
     }
 }

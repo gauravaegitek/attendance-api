@@ -206,13 +206,17 @@
 //             if (BCrypt.Net.BCrypt.Verify(dto.NewPassword, user.PasswordHash))
 //                 return BadRequest(new { success = false, message = "New password must be different from current password" });
 
-//             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+//             // ✅ FIX: passwordhash mein bcrypt hash + confirmpassword mein plain text
+//             user.PasswordHash    = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+//             user.ConfirmPassword = dto.ConfirmPassword; // plain text save
 //             await _context.SaveChangesAsync();
 
 //             return Ok(new { success = true, message = "Password changed successfully" });
 //         }
 //     }
 // }
+
+
 
 
 
@@ -235,7 +239,7 @@ namespace attendance_api.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize]
-    public class ProfileController : ControllerBase
+    public class ProfileController : BaseController
     {
         private readonly ApplicationDbContext _context;
         private readonly IWebHostEnvironment _env;
@@ -246,14 +250,6 @@ namespace attendance_api.Controllers
             _env     = env;
         }
 
-        // ─── Helper: UserId from JWT ──────────────────────────────────────
-        private int GetUserId()
-        {
-            var claim = User.FindFirst(ClaimTypes.NameIdentifier);
-            return claim != null ? int.Parse(claim.Value) : 0;
-        }
-
-        // ─── Helper: Map User entity → ProfileDto ────────────────────────
         private static UserProfileDto MapToDto(User u) => new()
         {
             UserId           = u.UserId,
@@ -272,41 +268,33 @@ namespace attendance_api.Controllers
             LastSeen         = u.LastSeen?.ToString("dd-MMM-yyyy HH:mm:ss")
         };
 
-        // ─────────────────────────────────────────────────────────────────
-        // GET /api/Profile  — Employee: Get own profile
-        // ─────────────────────────────────────────────────────────────────
+        // GET /api/Profile — Employee: Get own profile
         [HttpGet]
         public async Task<IActionResult> GetProfile()
         {
-            var user = await _context.Users.FindAsync(GetUserId());
-            if (user == null)
-                return NotFound(new { success = false, message = "User not found" });
+            var user = await _context.Users.FindAsync(GetCurrentUserId());
+            if (user == null) return ApiNotFound("User not found");
 
-            return Ok(new { success = true, message = "Profile retrieved", data = MapToDto(user) });
+            return ApiOk("Profile retrieved", MapToDto(user));
         }
 
-        // ─────────────────────────────────────────────────────────────────
-        // GET /api/Profile/{userId}  — Admin: Get any user's profile
-        // ─────────────────────────────────────────────────────────────────
+        // GET /api/Profile/{userId} — Admin: Get any user's profile
         [HttpGet("{userId:int}")]
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> GetUserProfile(int userId)
         {
             var user = await _context.Users.FindAsync(userId);
-            if (user == null)
-                return NotFound(new { success = false, message = "User not found" });
+            if (user == null) return ApiNotFound("User not found");
 
-            return Ok(new { success = true, message = "Profile retrieved", data = MapToDto(user) });
+            return ApiOk("Profile retrieved", MapToDto(user));
         }
 
-        // ─────────────────────────────────────────────────────────────────
-        // GET /api/Profile/all  — Admin: Get all users profiles
-        // ─────────────────────────────────────────────────────────────────
+        // GET /api/Profile/all — Admin: Get all users profiles
         [HttpGet("all")]
         [Authorize(Roles = "admin")]
         public async Task<IActionResult> GetAllProfiles(
             [FromQuery] bool onlyActive = true,
-            [FromQuery] string? role = null)
+            [FromQuery] string? role    = null)
         {
             var query = _context.Users.AsQueryable();
 
@@ -316,54 +304,45 @@ namespace attendance_api.Controllers
             if (!string.IsNullOrEmpty(role))
                 query = query.Where(u => u.Role.ToLower() == role.ToLower());
 
-            var users = await query.OrderBy(u => u.UserName).ToListAsync();
+            var users  = await query.OrderBy(u => u.UserName).ToListAsync();
             var result = users.Select(MapToDto).ToList();
 
-            return Ok(new { success = true, message = "Profiles retrieved", totalCount = result.Count, data = result });
+            return ApiOk($"Profiles retrieved — total {result.Count}", result);
         }
 
-        // ─────────────────────────────────────────────────────────────────
-        // PUT /api/Profile  — Employee: Update own profile
-        // Accepts: multipart/form-data (for optional photo upload)
-        // ─────────────────────────────────────────────────────────────────
+        // PUT /api/Profile — Employee: Update own profile
         [HttpPut]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> UpdateProfile([FromForm] UpdateProfileDto dto)
         {
-            var user = await _context.Users.FindAsync(GetUserId());
-            if (user == null)
-                return NotFound(new { success = false, message = "User not found" });
+            var user = await _context.Users.FindAsync(GetCurrentUserId());
+            if (user == null) return ApiNotFound("User not found");
 
-            // Update text fields only if provided
-            if (!string.IsNullOrWhiteSpace(dto.UserName))        user.UserName        = dto.UserName;
-            if (!string.IsNullOrWhiteSpace(dto.Phone))           user.Phone           = dto.Phone;
-            if (!string.IsNullOrWhiteSpace(dto.Department))      user.Department      = dto.Department;
-            if (!string.IsNullOrWhiteSpace(dto.Designation))     user.Designation     = dto.Designation;
-            if (dto.DateOfBirth.HasValue)                         user.DateOfBirth     = dto.DateOfBirth;
-            if (!string.IsNullOrWhiteSpace(dto.Address))         user.Address         = dto.Address;
-            if (!string.IsNullOrWhiteSpace(dto.EmergencyContact))user.EmergencyContact = dto.EmergencyContact;
+            if (!string.IsNullOrWhiteSpace(dto.UserName))         user.UserName         = dto.UserName;
+            if (!string.IsNullOrWhiteSpace(dto.Phone))            user.Phone            = dto.Phone;
+            if (!string.IsNullOrWhiteSpace(dto.Department))       user.Department       = dto.Department;
+            if (!string.IsNullOrWhiteSpace(dto.Designation))      user.Designation      = dto.Designation;
+            if (dto.DateOfBirth.HasValue)                          user.DateOfBirth      = dto.DateOfBirth;
+            if (!string.IsNullOrWhiteSpace(dto.Address))          user.Address          = dto.Address;
+            if (!string.IsNullOrWhiteSpace(dto.EmergencyContact)) user.EmergencyContact = dto.EmergencyContact;
 
-            // Handle profile photo upload
             if (dto.ProfilePhoto != null && dto.ProfilePhoto.Length > 0)
             {
                 var allowedTypes = new[] { "image/jpeg", "image/jpg", "image/png" };
                 if (!allowedTypes.Contains(dto.ProfilePhoto.ContentType.ToLower()))
-                    return BadRequest(new { success = false, message = "Only JPG/PNG files allowed for profile photo" });
+                    return ApiBadRequest("Only JPG/PNG files allowed for profile photo");
 
-                if (dto.ProfilePhoto.Length > 1 * 1024 * 1024) // 1 MB limit
-                    return BadRequest(new { success = false, message = "Profile photo must be less than 1 MB" });
+                if (dto.ProfilePhoto.Length > 1 * 1024 * 1024)
+                    return ApiBadRequest("Profile photo must be less than 1 MB");
 
                 var uploadDir = Path.Combine(_env.WebRootPath ?? "wwwroot", "uploads", "profiles");
-                if (!Directory.Exists(uploadDir))
-                    Directory.CreateDirectory(uploadDir);
+                if (!Directory.Exists(uploadDir)) Directory.CreateDirectory(uploadDir);
 
-                // Delete old photo if exists
                 if (!string.IsNullOrEmpty(user.ProfilePhoto))
                 {
                     var oldFilePath = Path.Combine(_env.WebRootPath ?? "wwwroot",
                         user.ProfilePhoto.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
-                    if (System.IO.File.Exists(oldFilePath))
-                        System.IO.File.Delete(oldFilePath);
+                    if (System.IO.File.Exists(oldFilePath)) System.IO.File.Delete(oldFilePath);
                 }
 
                 var ext      = Path.GetExtension(dto.ProfilePhoto.FileName);
@@ -377,65 +356,53 @@ namespace attendance_api.Controllers
             }
 
             await _context.SaveChangesAsync();
-
-            return Ok(new { success = true, message = "Profile updated successfully", data = MapToDto(user) });
+            return ApiOk("Profile updated successfully", MapToDto(user));
         }
 
-        // ─────────────────────────────────────────────────────────────────
-        // DELETE /api/Profile/photo  — Employee: Remove profile photo
-        // ─────────────────────────────────────────────────────────────────
+        // DELETE /api/Profile/photo — Employee: Remove profile photo
         [HttpDelete("photo")]
         public async Task<IActionResult> RemoveProfilePhoto()
         {
-            var user = await _context.Users.FindAsync(GetUserId());
-            if (user == null)
-                return NotFound(new { success = false, message = "User not found" });
+            var user = await _context.Users.FindAsync(GetCurrentUserId());
+            if (user == null) return ApiNotFound("User not found");
 
             if (string.IsNullOrEmpty(user.ProfilePhoto))
-                return BadRequest(new { success = false, message = "No profile photo to remove" });
+                return ApiBadRequest("No profile photo to remove");
 
-            // Delete file from disk
             var filePath = Path.Combine(_env.WebRootPath ?? "wwwroot",
                 user.ProfilePhoto.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
-            if (System.IO.File.Exists(filePath))
-                System.IO.File.Delete(filePath);
+            if (System.IO.File.Exists(filePath)) System.IO.File.Delete(filePath);
 
             user.ProfilePhoto = null;
             await _context.SaveChangesAsync();
 
-            return Ok(new { success = true, message = "Profile photo removed successfully" });
+            return ApiOk("Profile photo removed successfully");
         }
 
-        // ─────────────────────────────────────────────────────────────────
-        // POST /api/Profile/changepassword  — Employee: Change own password
-        // ─────────────────────────────────────────────────────────────────
+        // POST /api/Profile/changepassword — Employee: Change own password
         [HttpPost("changepassword")]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
         {
             if (!ModelState.IsValid)
-                return BadRequest(new { success = false, message = "Invalid data", errors = ModelState });
+                return ApiBadRequest("Invalid data");
 
             if (dto.NewPassword != dto.ConfirmPassword)
-                return BadRequest(new { success = false, message = "New password and confirm password do not match" });
+                return ApiBadRequest("New password and confirm password do not match");
 
-            var user = await _context.Users.FindAsync(GetUserId());
-            if (user == null)
-                return NotFound(new { success = false, message = "User not found" });
+            var user = await _context.Users.FindAsync(GetCurrentUserId());
+            if (user == null) return ApiNotFound("User not found");
 
-            // Verify current password
             if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
-                return BadRequest(new { success = false, message = "Current password is incorrect" });
+                return ApiBadRequest("Current password is incorrect");
 
-            // New password must be different
             if (BCrypt.Net.BCrypt.Verify(dto.NewPassword, user.PasswordHash))
-                return BadRequest(new { success = false, message = "New password must be different from current password" });
+                return ApiBadRequest("New password must be different from current password");
 
-            // ✅ FIX: passwordhash mein bcrypt hash + confirmpassword mein plain text
             user.PasswordHash    = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
-            user.ConfirmPassword = dto.ConfirmPassword; // plain text save
+            user.ConfirmPassword = dto.ConfirmPassword;
             await _context.SaveChangesAsync();
 
-            return Ok(new { success = true, message = "Password changed successfully" });
+            return ApiOk("Password changed successfully");
         }
     }
 }
