@@ -32,6 +32,13 @@ namespace attendance_api.Models
         public DateTime? LogoutDate { get; set; }
         public TimeSpan? LogoutTime { get; set; }
 
+        // ✅ YE TEEN ADD KARO
+        public DateTime? TokenExpiresAt { get; set; }
+        public int?      TotalMinutes   { get; set; }
+
+        [MaxLength(20)]
+        public string?   LogoutReason   { get; set; }
+
         // Audit
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public DateTime UpdatedAt { get; set; } = DateTime.Now;

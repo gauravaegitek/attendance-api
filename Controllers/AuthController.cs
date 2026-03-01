@@ -1454,10 +1454,316 @@
 
 
 
-// AuthController.cs  ✅ FULL CODE (Only DeviceType, no DeviceName)
+// // AuthController.cs  ✅ FULL CODE (Only DeviceType, no DeviceName)
+
+// using System;
+// using System.Collections.Generic;
+// using System.Linq;
+// using System.Threading.Tasks;
+// using Microsoft.AspNetCore.Authorization;
+// using Microsoft.AspNetCore.Mvc;
+// using Microsoft.EntityFrameworkCore;
+// using attendance_api.Data;
+// using attendance_api.DTOs;
+// using attendance_api.Models;
+// using attendance_api.Services;
+
+// namespace attendance_api.Controllers
+// {
+//     [Route("api/[controller]")]
+//     [ApiController]
+//     public class AuthController : BaseController
+//     {
+//         private readonly ApplicationDbContext _context;
+//         private readonly IJwtService _jwtService;
+
+//         public AuthController(ApplicationDbContext context, IJwtService jwtService)
+//         {
+//             _context = context;
+//             _jwtService = jwtService;
+//         }
+
+//         // ✅ helper: show only HH:mm for DateTime? fields
+//         private static string? ToHHmm(DateTime? dt)
+//             => dt.HasValue ? dt.Value.ToString("HH:mm") : null;
+
+//         // ✅ helper: show only HH:mm for TimeSpan? fields
+//         private static string? ToHHmm(TimeSpan? ts)
+//             => ts.HasValue ? ts.Value.ToString(@"hh\:mm") : null;
+
+//         // ────────────────────────────────────────────────
+//         // REGISTER
+//         // ────────────────────────────────────────────────
+//         [HttpPost("register")]
+//         public async Task<ActionResult<ApiResponse<LoginResponseDto>>> Register([FromBody] RegisterDto dto)
+//         {
+//             try
+//             {
+//                 var email = (dto.Email ?? "").Trim().ToLower();
+
+//                 if (await _context.Users.AnyAsync(u => u.Email.ToLower() == email))
+//                     return ApiBadRequest("Email already exists");
+
+//                 var validRoles = new[] { "admin", "manager", "supervisor", "developer", "tester", "hr", "employee" };
+//                 var role = (dto.Role ?? "").Trim().ToLower();
+
+//                 if (!validRoles.Contains(role))
+//                     return ApiBadRequest("Invalid role. Role must be one of: admin, manager, supervisor, developer, tester, hr, employee");
+
+//                 var roleId = dto.RoleId;
+//                 if (roleId == 0)
+//                 {
+//                     var roleRecord = await _context.Roles.FirstOrDefaultAsync(r => r.RoleName.ToLower() == role);
+//                     if (roleRecord != null) roleId = roleRecord.RoleId;
+//                 }
+
+//                 var now = DateTime.Now;
+
+//                 var user = new User
+//                 {
+//                     UserName = (dto.UserName ?? "").Trim(),
+//                     Email = email,
+//                     PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+//                     ConfirmPassword = dto.Password,
+//                     Role = role,
+//                     RoleId = roleId,
+//                     CreatedOn = now,
+//                     IsActive = true,
+
+//                     // ✅ DeviceType will remain null on register
+//                     DeviceType = null
+//                 };
+
+//                 _context.Users.Add(user);
+//                 await _context.SaveChangesAsync();
+
+//                 return ApiOk("Registration successful", new LoginResponseDto
+//                 {
+//                     UserId = user.UserId,
+//                     UserName = user.UserName,
+//                     Email = user.Email,
+//                     Role = user.Role,
+//                     Token = "",
+//                     Message = "Welcome! Please login to continue.",
+//                     DeviceType = user.DeviceType
+//                 });
+//             }
+//             catch (Exception ex)
+//             {
+//                 return ApiServerError("Registration failed", ex);
+//             }
+//         }
+
+//         // ────────────────────────────────────────────────
+//         // LOGIN ✅ inserts login history, returns token
+//         // ────────────────────────────────────────────────
+//         [HttpPost("login")]
+//         public async Task<ActionResult<ApiResponse<LoginResponseDto>>> Login([FromBody] LoginDto dto)
+//         {
+//             try
+//             {
+//                 var email = (dto.Email ?? "").Trim().ToLower();
+//                 var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+
+//                 if (user == null) return ApiUnauthorized("Invalid email or password");
+//                 if (!user.IsActive) return ApiUnauthorized("User account is deactivated. Please contact admin.");
+//                 if (!BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
+//                     return ApiUnauthorized("Invalid email or password");
+
+//                 var deviceId = dto.DeviceId?.Trim() ?? "";
+//                 var deviceType = dto.DeviceType?.Trim(); // ✅ ONLY THIS
+
+//                 // ✅ enforce single-device binding
+//                 if (!string.IsNullOrEmpty(user.DeviceId) && user.DeviceId != deviceId)
+//                 {
+//                     return StatusCode(403, new ApiResponse<object>
+//                     {
+//                         Message = "This account is already logged in on another device. Please clear device ID to login from this device.",
+//                         Success = false,
+//                         Errors = new List<string> { "DEVICE_MISMATCH" }
+//                     });
+//                 }
+
+//                 var now = DateTime.Now;
+
+//                 // ✅ update user current session/device
+//                 user.DeviceId = deviceId;
+//                 user.DeviceType = deviceType;
+//                 user.LastSeen = now;
+//                 await _context.SaveChangesAsync();
+
+//                 // token
+//                 var token = _jwtService.GenerateToken(user);
+//                 user.CurrentToken = token;
+//                 await _context.SaveChangesAsync();
+
+//                 // ✅ login history time only (HH:mm stored as TIME(0) / TimeSpan)
+//                 var loginTime = new TimeSpan(now.Hour, now.Minute, 0);
+
+//                 var loginHistory = new UserLoginHistory
+//                 {
+//                     UserId = user.UserId,
+//                     UserName = user.UserName,
+//                     LoginDate = now.Date,
+//                     LoginTime = loginTime,
+//                     DeviceType = deviceType, // ✅ stored here also
+//                     CreatedAt = now,
+//                     UpdatedAt = now
+//                 };
+
+//                 _context.UserLoginHistories.Add(loginHistory);
+//                 await _context.SaveChangesAsync();
+
+//                 // ✅ response includes DeviceType
+//                 return ApiOk("Login successful", new LoginResponseDto
+//                 {
+//                     UserId = user.UserId,
+//                     UserName = user.UserName,
+//                     Email = user.Email,
+//                     Role = user.Role,
+//                     Token = token,
+//                     Message = "Welcome back!",
+//                     DeviceType = user.DeviceType
+//                 });
+//             }
+//             catch (Exception ex)
+//             {
+//                 return ApiServerError("Login failed", ex);
+//             }
+//         }
+
+//         // ────────────────────────────────────────────────
+//         // LOGOUT ✅ only by userId from JWT (no request body)
+//         // ────────────────────────────────────────────────
+//         [Authorize]
+//         [HttpPost("logout")]
+//         public async Task<ActionResult<ApiResponse<string>>> Logout()
+//         {
+//             try
+//             {
+//                 var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+//                 if (userIdClaim == null) return ApiUnauthorized("Invalid token");
+
+//                 var userId = int.Parse(userIdClaim.Value);
+//                 var user = await _context.Users.FindAsync(userId);
+
+//                 var now = DateTime.Now;
+//                 var logoutTime = new TimeSpan(now.Hour, now.Minute, 0);
+
+//                 // ✅ Update user token session
+//                 if (user != null)
+//                 {
+//                     user.LastSeen = now;
+//                     user.CurrentToken = null;
+
+//                     // OPTIONAL:
+//                     // If you want logout to allow login from another device without admin:
+//                     // user.DeviceId = null;
+//                     // user.DeviceType = null;
+
+//                     await _context.SaveChangesAsync();
+//                 }
+
+//                 // ✅ Update latest active login history for this user
+//                 var latestHistory = await _context.UserLoginHistories
+//                     .Where(h => h.UserId == userId && h.LogoutDate == null)
+//                     .OrderByDescending(h => h.CreatedAt)
+//                     .FirstOrDefaultAsync();
+
+//                 if (latestHistory != null)
+//                 {
+//                     latestHistory.LogoutDate = now.Date;
+//                     latestHistory.LogoutTime = logoutTime;
+//                     latestHistory.UpdatedAt = now;
+//                     await _context.SaveChangesAsync();
+//                 }
+
+//                 return ApiOk("Logout successful", "Logged out");
+//             }
+//             catch (Exception ex)
+//             {
+//                 return ApiServerError("Logout failed", ex);
+//             }
+//         }
+
+//         // ────────────────────────────────────────────────
+//         // CLEAR DEVICE ✅ only admin
+//         // ────────────────────────────────────────────────
+//         [Authorize]
+//         [HttpPost("cleardevice")]
+//         public async Task<ActionResult<ApiResponse<string>>> ClearDevice([FromBody] ClearDeviceDto dto)
+//         {
+//             try
+//             {
+//                 var userRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+//                 if (userRole?.ToLower() != "admin")
+//                     return ApiForbidden("Access denied. Only admin can clear device ID.");
+
+//                 var user = await _context.Users.FindAsync(dto.UserId);
+//                 if (user == null) return ApiNotFound("User not found");
+
+//                 user.DeviceId = null;
+//                 user.DeviceType = null;
+//                 user.CurrentToken = null;
+
+//                 await _context.SaveChangesAsync();
+
+//                 return ApiOk("Device ID cleared successfully. You can now login from a different device.", "Device cleared");
+//             }
+//             catch (Exception ex)
+//             {
+//                 return ApiServerError("Failed to clear device ID", ex);
+//             }
+//         }
+
+//         // ────────────────────────────────────────────────
+//         // GET ALL USERS ✅ returns only HH:mm (DISPLAY)
+//         // ────────────────────────────────────────────────
+//         [Authorize(Roles = "admin")]
+//         [HttpGet("users")]
+//         public async Task<ActionResult<ApiResponse<object>>> GetAllUsers()
+//         {
+//             try
+//             {
+//                 var users = await _context.Users.ToListAsync();
+
+//                 var result = users.Select(u => new
+//                 {
+//                     u.UserId,
+//                     u.UserName,
+//                     u.Email,
+//                     u.Role,
+//                     u.DeviceId,
+//                     u.DeviceType,
+//                     LastSeen = ToHHmm(u.LastSeen),
+//                     CreatedOn = ToHHmm(u.CreatedOn),
+//                     u.IsActive
+//                 });
+
+//                 return ApiOk("Users retrieved successfully", result);
+//             }
+//             catch (Exception ex)
+//             {
+//                 return ApiServerError("Failed to retrieve users", ex);
+//             }
+//         }
+//     }
+// }
+
+
+
+
+
+
+
+
+
+
+// AuthController.cs  ✅ FULL CODE
 
 using System;
 using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
@@ -1483,11 +1789,9 @@ namespace attendance_api.Controllers
             _jwtService = jwtService;
         }
 
-        // ✅ helper: show only HH:mm for DateTime? fields
         private static string? ToHHmm(DateTime? dt)
             => dt.HasValue ? dt.Value.ToString("HH:mm") : null;
 
-        // ✅ helper: show only HH:mm for TimeSpan? fields
         private static string? ToHHmm(TimeSpan? ts)
             => ts.HasValue ? ts.Value.ToString(@"hh\:mm") : null;
 
@@ -1518,20 +1822,17 @@ namespace attendance_api.Controllers
                 }
 
                 var now = DateTime.Now;
-
                 var user = new User
                 {
-                    UserName = (dto.UserName ?? "").Trim(),
-                    Email = email,
-                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+                    UserName        = (dto.UserName ?? "").Trim(),
+                    Email           = email,
+                    PasswordHash    = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                     ConfirmPassword = dto.Password,
-                    Role = role,
-                    RoleId = roleId,
-                    CreatedOn = now,
-                    IsActive = true,
-
-                    // ✅ DeviceType will remain null on register
-                    DeviceType = null
+                    Role            = role,
+                    RoleId          = roleId,
+                    CreatedOn       = now,
+                    IsActive        = true,
+                    DeviceType      = null
                 };
 
                 _context.Users.Add(user);
@@ -1539,23 +1840,20 @@ namespace attendance_api.Controllers
 
                 return ApiOk("Registration successful", new LoginResponseDto
                 {
-                    UserId = user.UserId,
-                    UserName = user.UserName,
-                    Email = user.Email,
-                    Role = user.Role,
-                    Token = "",
-                    Message = "Welcome! Please login to continue.",
+                    UserId     = user.UserId,
+                    UserName   = user.UserName,
+                    Email      = user.Email,
+                    Role       = user.Role,
+                    Token      = "",
+                    Message    = "Welcome! Please login to continue.",
                     DeviceType = user.DeviceType
                 });
             }
-            catch (Exception ex)
-            {
-                return ApiServerError("Registration failed", ex);
-            }
+            catch (Exception ex) { return ApiServerError("Registration failed", ex); }
         }
 
         // ────────────────────────────────────────────────
-        // LOGIN ✅ inserts login history, returns token
+        // LOGIN ✅ TokenExpiresAt save hoga
         // ────────────────────────────────────────────────
         [HttpPost("login")]
         public async Task<ActionResult<ApiResponse<LoginResponseDto>>> Login([FromBody] LoginDto dto)
@@ -1563,77 +1861,72 @@ namespace attendance_api.Controllers
             try
             {
                 var email = (dto.Email ?? "").Trim().ToLower();
-                var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
+                var user  = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email);
 
                 if (user == null) return ApiUnauthorized("Invalid email or password");
                 if (!user.IsActive) return ApiUnauthorized("User account is deactivated. Please contact admin.");
                 if (!BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
                     return ApiUnauthorized("Invalid email or password");
 
-                var deviceId = dto.DeviceId?.Trim() ?? "";
-                var deviceType = dto.DeviceType?.Trim(); // ✅ ONLY THIS
+                var deviceId   = dto.DeviceId?.Trim() ?? "";
+                var deviceType = dto.DeviceType?.Trim();
 
-                // ✅ enforce single-device binding
                 if (!string.IsNullOrEmpty(user.DeviceId) && user.DeviceId != deviceId)
                 {
                     return StatusCode(403, new ApiResponse<object>
                     {
                         Message = "This account is already logged in on another device. Please clear device ID to login from this device.",
                         Success = false,
-                        Errors = new List<string> { "DEVICE_MISMATCH" }
+                        Errors  = new List<string> { "DEVICE_MISMATCH" }
                     });
                 }
 
                 var now = DateTime.Now;
 
-                // ✅ update user current session/device
-                user.DeviceId = deviceId;
+                user.DeviceId   = deviceId;
                 user.DeviceType = deviceType;
-                user.LastSeen = now;
+                user.LastSeen   = now;
                 await _context.SaveChangesAsync();
 
-                // token
                 var token = _jwtService.GenerateToken(user);
                 user.CurrentToken = token;
                 await _context.SaveChangesAsync();
 
-                // ✅ login history time only (HH:mm stored as TIME(0) / TimeSpan)
-                var loginTime = new TimeSpan(now.Hour, now.Minute, 0);
+                // ✅ JWT se TokenExpiresAt nikalo
+                var jwtToken       = new JwtSecurityTokenHandler().ReadJwtToken(token);
+                var tokenExpiresAt = jwtToken.ValidTo.ToLocalTime();
 
                 var loginHistory = new UserLoginHistory
                 {
-                    UserId = user.UserId,
-                    UserName = user.UserName,
-                    LoginDate = now.Date,
-                    LoginTime = loginTime,
-                    DeviceType = deviceType, // ✅ stored here also
-                    CreatedAt = now,
-                    UpdatedAt = now
+                    UserId         = user.UserId,
+                    UserName       = user.UserName,
+                    LoginDate      = now.Date,
+                    LoginTime      = new TimeSpan(now.Hour, now.Minute, now.Second),
+                    DeviceType     = deviceType,
+                    TokenExpiresAt = tokenExpiresAt,   // ✅ NEW
+                    CreatedAt      = now,
+                    UpdatedAt      = now
                 };
 
                 _context.UserLoginHistories.Add(loginHistory);
                 await _context.SaveChangesAsync();
 
-                // ✅ response includes DeviceType
                 return ApiOk("Login successful", new LoginResponseDto
                 {
-                    UserId = user.UserId,
-                    UserName = user.UserName,
-                    Email = user.Email,
-                    Role = user.Role,
-                    Token = token,
-                    Message = "Welcome back!",
+                    UserId     = user.UserId,
+                    UserName   = user.UserName,
+                    Email      = user.Email,
+                    Role       = user.Role,
+                    Token      = token,
+                    Message    = "Welcome back!",
                     DeviceType = user.DeviceType
                 });
             }
-            catch (Exception ex)
-            {
-                return ApiServerError("Login failed", ex);
-            }
+            catch (Exception ex) { return ApiServerError("Login failed", ex); }
         }
 
         // ────────────────────────────────────────────────
-        // LOGOUT ✅ only by userId from JWT (no request body)
+        // LOGOUT ✅ TotalMinutes + LogoutReason save hoga
         // ────────────────────────────────────────────────
         [Authorize]
         [HttpPost("logout")]
@@ -1645,26 +1938,18 @@ namespace attendance_api.Controllers
                 if (userIdClaim == null) return ApiUnauthorized("Invalid token");
 
                 var userId = int.Parse(userIdClaim.Value);
-                var user = await _context.Users.FindAsync(userId);
+                var user   = await _context.Users.FindAsync(userId);
 
                 var now = DateTime.Now;
-                var logoutTime = new TimeSpan(now.Hour, now.Minute, 0);
 
-                // ✅ Update user token session
                 if (user != null)
                 {
-                    user.LastSeen = now;
+                    user.LastSeen     = now;
                     user.CurrentToken = null;
-
-                    // OPTIONAL:
-                    // If you want logout to allow login from another device without admin:
-                    // user.DeviceId = null;
-                    // user.DeviceType = null;
-
                     await _context.SaveChangesAsync();
                 }
 
-                // ✅ Update latest active login history for this user
+                // ✅ Active session dhundo
                 var latestHistory = await _context.UserLoginHistories
                     .Where(h => h.UserId == userId && h.LogoutDate == null)
                     .OrderByDescending(h => h.CreatedAt)
@@ -1672,22 +1957,29 @@ namespace attendance_api.Controllers
 
                 if (latestHistory != null)
                 {
-                    latestHistory.LogoutDate = now.Date;
-                    latestHistory.LogoutTime = logoutTime;
-                    latestHistory.UpdatedAt = now;
+                    latestHistory.LogoutDate   = now.Date;
+                    latestHistory.LogoutTime   = new TimeSpan(now.Hour, now.Minute, now.Second);
+                    latestHistory.LogoutReason = "manual";   // ✅ NEW
+                    latestHistory.UpdatedAt    = now;
+
+                    // ✅ TotalMinutes calculate karo
+                    if (latestHistory.LoginDate.HasValue && latestHistory.LoginTime.HasValue)
+                    {
+                        var loginDt = latestHistory.LoginDate.Value
+                                        .Add(latestHistory.LoginTime.Value);
+                        latestHistory.TotalMinutes = (int)(now - loginDt).TotalMinutes;
+                    }
+
                     await _context.SaveChangesAsync();
                 }
 
                 return ApiOk("Logout successful", "Logged out");
             }
-            catch (Exception ex)
-            {
-                return ApiServerError("Logout failed", ex);
-            }
+            catch (Exception ex) { return ApiServerError("Logout failed", ex); }
         }
 
         // ────────────────────────────────────────────────
-        // CLEAR DEVICE ✅ only admin
+        // CLEAR DEVICE ✅ LogoutReason = "device_cleared"
         // ────────────────────────────────────────────────
         [Authorize]
         [HttpPost("cleardevice")]
@@ -1702,22 +1994,42 @@ namespace attendance_api.Controllers
                 var user = await _context.Users.FindAsync(dto.UserId);
                 if (user == null) return ApiNotFound("User not found");
 
-                user.DeviceId = null;
-                user.DeviceType = null;
+                var now = DateTime.Now;
+
+                // ✅ Active session close karo
+                var activeSession = await _context.UserLoginHistories
+                    .Where(h => h.UserId == dto.UserId && h.LogoutDate == null)
+                    .OrderByDescending(h => h.CreatedAt)
+                    .FirstOrDefaultAsync();
+
+                if (activeSession != null)
+                {
+                    activeSession.LogoutDate   = now.Date;
+                    activeSession.LogoutTime   = new TimeSpan(now.Hour, now.Minute, now.Second);
+                    activeSession.LogoutReason = "device_cleared";   // ✅ NEW
+                    activeSession.UpdatedAt    = now;
+
+                    if (activeSession.LoginDate.HasValue && activeSession.LoginTime.HasValue)
+                    {
+                        var loginDt = activeSession.LoginDate.Value
+                                        .Add(activeSession.LoginTime.Value);
+                        activeSession.TotalMinutes = (int)(now - loginDt).TotalMinutes;
+                    }
+                }
+
+                user.DeviceId     = null;
+                user.DeviceType   = null;
                 user.CurrentToken = null;
 
                 await _context.SaveChangesAsync();
 
-                return ApiOk("Device ID cleared successfully. You can now login from a different device.", "Device cleared");
+                return ApiOk("Device cleared and session logged out.", "Device cleared");
             }
-            catch (Exception ex)
-            {
-                return ApiServerError("Failed to clear device ID", ex);
-            }
+            catch (Exception ex) { return ApiServerError("Failed to clear device ID", ex); }
         }
 
         // ────────────────────────────────────────────────
-        // GET ALL USERS ✅ returns only HH:mm (DISPLAY)
+        // GET ALL USERS
         // ────────────────────────────────────────────────
         [Authorize(Roles = "admin")]
         [HttpGet("users")]
@@ -1725,8 +2037,7 @@ namespace attendance_api.Controllers
         {
             try
             {
-                var users = await _context.Users.ToListAsync();
-
+                var users  = await _context.Users.ToListAsync();
                 var result = users.Select(u => new
                 {
                     u.UserId,
@@ -1735,17 +2046,14 @@ namespace attendance_api.Controllers
                     u.Role,
                     u.DeviceId,
                     u.DeviceType,
-                    LastSeen = ToHHmm(u.LastSeen),
+                    LastSeen  = ToHHmm(u.LastSeen),
                     CreatedOn = ToHHmm(u.CreatedOn),
                     u.IsActive
                 });
 
                 return ApiOk("Users retrieved successfully", result);
             }
-            catch (Exception ex)
-            {
-                return ApiServerError("Failed to retrieve users", ex);
-            }
+            catch (Exception ex) { return ApiServerError("Failed to retrieve users", ex); }
         }
     }
 }

@@ -21,6 +21,12 @@ namespace attendance_api.DTOs
         public DateTime? LogoutDate { get; set; }
         public string?   LogoutTime { get; set; }
         public bool      IsActive   { get; set; }
+        // ✅ NEW
+        public int?      TotalMinutes  { get; set; }
+        public string?   TotalDuration { get; set; }
+        public string?   LogoutReason  { get; set; }
+        public string?   SessionStatus { get; set; }
+
         public DateTime  CreatedAt  { get; set; }
         public DateTime  UpdatedAt  { get; set; }
     }

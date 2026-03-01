@@ -837,6 +837,9 @@ namespace attendance_api.Data
                     .WithMany()
                     .HasForeignKey(e => e.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+
+                entity.Property(e => e.LogoutReason).HasMaxLength(20); // ✅ ADD
+
             });
 
             // // ─── Seed: Roles ──────────────────────────────────────────────
