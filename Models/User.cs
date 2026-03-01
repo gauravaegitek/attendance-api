@@ -91,6 +91,10 @@ namespace attendance_api.Models
         [Column("currenttoken")]
         public string? CurrentToken { get; set; }
 
+        [Column("devicetype")]
+        [MaxLength(100)]
+        public string? DeviceType { get; set; }
+
         // ─── Navigation Properties ────────────────────────────────────
         public ICollection<Attendance> Attendances { get; set; } = new List<Attendance>();
         public ICollection<WFHRequest>? WFHRequests { get; set; }
