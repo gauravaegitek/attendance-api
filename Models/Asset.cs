@@ -114,7 +114,7 @@
 
 
 
-// ======================= Models/Asset.cs (FINAL - NO NEW TABLE) =======================
+// ======================= Models/Asset.cs =======================
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -197,7 +197,7 @@ namespace attendance_api.Models
 
         // ─── Meta ─────────────────────────────────────────────────────────
         public int? CreatedByUserId { get; set; }
-        public DateTime CreatedOn { get; set; } = DateTime.Now;
+        public DateTime CreatedOn { get; set; } = DateTime.UtcNow;   // Fix #6: Now → UtcNow
         public DateTime? UpdatedOn { get; set; }
         public bool IsActive { get; set; } = true;
 
@@ -222,13 +222,18 @@ namespace attendance_api.Models
         [MaxLength(50)]
         public string Action { get; set; } = string.Empty;
 
-        [MaxLength(500)]
+        // Fix #4: MaxLength 2000 — maintenance events store JSON snapshot here
+        // so full maintenance details (vendor, cost, ticket, resolution) are
+        // never lost when a new maintenance run overwrites the Asset row.
+        // Example JSON for maintenance_completed:
+        // {"type":"repair","vendor":"Acme","ticket":"T01","issue":"...","resolution":"...","cost":1500.00,"startedAt":"...","completedAt":"..."}
+        [MaxLength(2000)]
         public string? Note { get; set; }
 
         [MaxLength(20)]
         public string? Condition { get; set; }
 
-        public DateTime ActionDate { get; set; } = DateTime.Now;
+        public DateTime ActionDate { get; set; } = DateTime.UtcNow;  // Fix #6: Now → UtcNow
 
         public int? ActionByUserId { get; set; }
 

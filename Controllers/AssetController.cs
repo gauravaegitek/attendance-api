@@ -1370,6 +1370,19 @@
 // ✅ Logs will be stored in dbo.AssetHistories (same history table)
 // ❌ No AssetMaintenance / No _db.AssetMaintenances
 
+// ======================= Controllers/AssetController.cs =======================
+// ALL 11 FIXES APPLIED (no new files needed):
+//   #1  – CompleteMaintenanceRequest.AssetId (was MaintenanceId)
+//   #2  – ReturnCondition / MaintenanceType validated via AllowedValuesAttribute
+//   #3  – GetAssetSummary: date filtering pushed to DB query (no ToList() first)
+//   #4  – JSON snapshot of maintenance details stored in AssetHistory.Note
+//   #5  – Role strings as private constants (no separate file needed)
+//   #6  – DateTime.Now → DateTime.UtcNow everywhere
+//   #7  – Mapping methods moved to bottom as private static (cleaner, same file)
+//   #8  – [ProducesResponseType] added on all endpoints
+//   #9  – GetAssetList: separate AssignedFrom/To + CreatedFrom/To filters
+//   #10 – Handled in DbContext (DeleteBehavior.Restrict)
+//   #11 – AssetCode uniqueness check: IsActive filter removed
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -1377,6 +1390,7 @@ using attendance_api.Data;
 using attendance_api.DTOs;
 using attendance_api.Models;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace attendance_api.Controllers
 {
@@ -1386,6 +1400,16 @@ namespace attendance_api.Controllers
     public class AssetController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
+
+        // Fix #5: role strings as constants — ek jagah change karo, sab jagah reflect hoga
+        private const string AdminRole   = "Admin";
+        private const string AdminLower  = "admin";
+        private const string AdminPolicy = "Admin,admin";
+
+        // Fix #5: status constants
+        private const string StatusAvailable   = "available";
+        private const string StatusAssigned    = "assigned";
+        private const string StatusMaintenance = "maintenance";
 
         public AssetController(ApplicationDbContext db)
         {
@@ -1399,39 +1423,48 @@ namespace attendance_api.Controllers
             return int.TryParse(claim, out var id) ? id : 0;
         }
 
+        // Fix #5: constants use kiye
         private bool IsAdmin() =>
-            User.IsInRole("admin") || User.IsInRole("Admin");
+            User.IsInRole(AdminRole) || User.IsInRole(AdminLower);
 
         // ════════════════════════════════════════════════════════════════
         //  1. POST /api/Asset/add
         // ════════════════════════════════════════════════════════════════
         [HttpPost("add")]
-        [Authorize(Roles = "admin,Admin")]
+        [Authorize(Roles = AdminPolicy)]   // Fix #5
+        [ProducesResponseType(StatusCodes.Status200OK)]       // Fix #8
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> AddAsset([FromBody] CreateAssetRequest request)
         {
             if (!ModelState.IsValid)
                 return BadRequest(new { message = "Invalid request.", success = false, errors = ModelState });
 
+            // Fix #11: IsActive filter hataya — inactive asset ka code bhi taken maana jayega
             if (!string.IsNullOrEmpty(request.AssetCode))
             {
-                var exists = await _db.Assets.AnyAsync(a => a.AssetCode == request.AssetCode && a.IsActive);
+                var exists = await _db.Assets.AnyAsync(a => a.AssetCode == request.AssetCode);
                 if (exists)
-                    return Conflict(new { message = $"Asset code '{request.AssetCode}' already exists.", success = false });
+                    return Conflict(new
+                    {
+                        message = $"Asset code '{request.AssetCode}' already exists (active ya inactive).",
+                        success = false
+                    });
             }
 
             var asset = new Asset
             {
-                AssetName = request.AssetName,
-                AssetType = request.AssetType.ToLower(),
-                AssetCode = request.AssetCode,
-                SerialNumber = request.SerialNumber,
-                Brand = request.Brand,
-                Model = request.Model,
-                Description = request.Description,
-                Status = "available",
+                AssetName       = request.AssetName,
+                AssetType       = request.AssetType.ToLower(),
+                AssetCode       = request.AssetCode,
+                SerialNumber    = request.SerialNumber,
+                Brand           = request.Brand,
+                Model           = request.Model,
+                Description     = request.Description,
+                Status          = StatusAvailable,    // Fix #5
                 CreatedByUserId = GetCurrentUserId(),
-                CreatedOn = DateTime.Now,
-                IsActive = true
+                CreatedOn       = DateTime.UtcNow,    // Fix #6
+                IsActive        = true
             };
 
             _db.Assets.Add(asset);
@@ -1449,7 +1482,10 @@ namespace attendance_api.Controllers
         //  2. POST /api/Asset/assign
         // ════════════════════════════════════════════════════════════════
         [HttpPost("assign")]
-        [Authorize(Roles = "admin,Admin")]
+        [Authorize(Roles = AdminPolicy)]   // Fix #5
+        [ProducesResponseType(StatusCodes.Status200OK)]        // Fix #8
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> AssignAsset([FromBody] AssignAssetRequest request)
         {
             if (!ModelState.IsValid)
@@ -1459,14 +1495,14 @@ namespace attendance_api.Controllers
             if (asset == null || !asset.IsActive)
                 return NotFound(new { message = "Asset not found.", success = false });
 
-            if (asset.Status == "assigned")
+            if (asset.Status == StatusAssigned)   // Fix #5
                 return BadRequest(new
                 {
                     message = $"Asset already assigned to user ID {asset.AssignedToUserId}. Return it first.",
                     success = false
                 });
 
-            if (asset.Status == "maintenance")
+            if (asset.Status == StatusMaintenance)   // Fix #5
                 return BadRequest(new { message = "Asset is in maintenance. Cannot assign now.", success = false });
 
             var user = await _db.Users.FindAsync(request.AssignedToUserId);
@@ -1475,23 +1511,23 @@ namespace attendance_api.Controllers
 
             var adminId = GetCurrentUserId();
 
-            asset.Status = "assigned";
-            asset.AssignedToUserId = request.AssignedToUserId;
-            asset.AssignedDate = DateTime.Now;
+            asset.Status             = StatusAssigned;
+            asset.AssignedToUserId   = request.AssignedToUserId;
+            asset.AssignedDate       = DateTime.UtcNow;   // Fix #6
             asset.ExpectedReturnDate = request.ExpectedReturnDate;
-            asset.AssignmentNote = request.AssignmentNote;
-            asset.ReturnedDate = null;
-            asset.ReturnNote = null;
-            asset.ReturnCondition = null;
-            asset.UpdatedOn = DateTime.Now;
+            asset.AssignmentNote     = request.AssignmentNote;
+            asset.ReturnedDate       = null;
+            asset.ReturnNote         = null;
+            asset.ReturnCondition    = null;
+            asset.UpdatedOn          = DateTime.UtcNow;   // Fix #6
 
             _db.AssetHistories.Add(new AssetHistory
             {
-                AssetId = asset.AssetId,
-                UserId = request.AssignedToUserId,
-                Action = "assigned",
-                Note = request.AssignmentNote,
-                ActionDate = DateTime.Now,
+                AssetId        = asset.AssetId,
+                UserId         = request.AssignedToUserId,
+                Action         = "assigned",
+                Note           = request.AssignmentNote,
+                ActionDate     = DateTime.UtcNow,   // Fix #6
                 ActionByUserId = adminId
             });
 
@@ -1509,7 +1545,10 @@ namespace attendance_api.Controllers
         //  3. PUT /api/Asset/return
         // ════════════════════════════════════════════════════════════════
         [HttpPut("return")]
-        [Authorize(Roles = "admin,Admin")]
+        [Authorize(Roles = AdminPolicy)]   // Fix #5
+        [ProducesResponseType(StatusCodes.Status200OK)]        // Fix #8
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> ReturnAsset([FromBody] ReturnAssetRequest request)
         {
             if (!ModelState.IsValid)
@@ -1522,29 +1561,29 @@ namespace attendance_api.Controllers
             if (asset == null)
                 return NotFound(new { message = "Asset not found.", success = false });
 
-            if (asset.Status != "assigned")
+            if (asset.Status != StatusAssigned)   // Fix #5
                 return BadRequest(new { message = "Asset is not currently assigned.", success = false });
 
             var previousUserId = asset.AssignedToUserId;
-            var adminId = GetCurrentUserId();
+            var adminId        = GetCurrentUserId();
 
-            asset.Status = "available";
-            asset.ReturnedDate = DateTime.Now;
-            asset.ReturnNote = request.ReturnNote;
-            asset.ReturnCondition = request.ReturnCondition;
-            asset.AssignedToUserId = null;
-            asset.AssignedDate = null;
+            asset.Status             = StatusAvailable;
+            asset.ReturnedDate       = DateTime.UtcNow;   // Fix #6
+            asset.ReturnNote         = request.ReturnNote;
+            asset.ReturnCondition    = request.ReturnCondition;
+            asset.AssignedToUserId   = null;
+            asset.AssignedDate       = null;
             asset.ExpectedReturnDate = null;
-            asset.UpdatedOn = DateTime.Now;
+            asset.UpdatedOn          = DateTime.UtcNow;   // Fix #6
 
             _db.AssetHistories.Add(new AssetHistory
             {
-                AssetId = asset.AssetId,
-                UserId = previousUserId,
-                Action = "returned",
-                Note = request.ReturnNote,
-                Condition = request.ReturnCondition,
-                ActionDate = DateTime.Now,
+                AssetId        = asset.AssetId,
+                UserId         = previousUserId,
+                Action         = "returned",
+                Note           = request.ReturnNote,
+                Condition      = request.ReturnCondition,
+                ActionDate     = DateTime.UtcNow,   // Fix #6
                 ActionByUserId = adminId
             });
 
@@ -1560,14 +1599,12 @@ namespace attendance_api.Controllers
 
         // ════════════════════════════════════════════════════════════════
         //  4. GET /api/Asset/list
+        //  Fix #9: [FromQuery] AssetListQuery — assigned aur created dono ke
+        //          alag date filters hain ab
         // ════════════════════════════════════════════════════════════════
         [HttpGet("list")]
-        public async Task<IActionResult> GetAssetList(
-            [FromQuery] string? status = null,
-            [FromQuery] string? assetType = null,
-            [FromQuery] int? userId = null,
-            [FromQuery] DateTime? fromDate = null,
-            [FromQuery] DateTime? toDate = null)
+        [ProducesResponseType(StatusCodes.Status200OK)]   // Fix #8
+        public async Task<IActionResult> GetAssetList([FromQuery] AssetListQuery q)
         {
             var query = _db.Assets
                 .Include(a => a.AssignedToUser)
@@ -1581,33 +1618,41 @@ namespace attendance_api.Controllers
             }
             else
             {
-                if (!string.IsNullOrEmpty(status))
-                    query = query.Where(a => a.Status == status.ToLower());
+                if (!string.IsNullOrEmpty(q.Status))
+                    query = query.Where(a => a.Status == q.Status.ToLower());
 
-                if (!string.IsNullOrEmpty(assetType))
-                    query = query.Where(a => a.AssetType == assetType.ToLower());
+                if (!string.IsNullOrEmpty(q.AssetType))
+                    query = query.Where(a => a.AssetType == q.AssetType.ToLower());
 
-                if (userId.HasValue)
-                    query = query.Where(a => a.AssignedToUserId == userId.Value);
+                if (q.UserId.HasValue)
+                    query = query.Where(a => a.AssignedToUserId == q.UserId.Value);
             }
 
-            if (fromDate.HasValue)
-                query = query.Where(a => a.AssignedDate >= fromDate.Value.Date);
+            // Fix #9: assigned date filter
+            if (q.AssignedFrom.HasValue)
+                query = query.Where(a => a.AssignedDate >= q.AssignedFrom.Value.Date);
+            if (q.AssignedTo.HasValue)
+                query = query.Where(a => a.AssignedDate <= q.AssignedTo.Value.Date.AddDays(1).AddTicks(-1));
 
-            if (toDate.HasValue)
-                query = query.Where(a => a.AssignedDate <= toDate.Value.Date.AddDays(1).AddTicks(-1));
+            // Fix #9: created date filter (naya — pehle yeh tha hi nahi)
+            if (q.CreatedFrom.HasValue)
+                query = query.Where(a => a.CreatedOn >= q.CreatedFrom.Value.Date);
+            if (q.CreatedTo.HasValue)
+                query = query.Where(a => a.CreatedOn <= q.CreatedTo.Value.Date.AddDays(1).AddTicks(-1));
 
             var assets = await query.OrderByDescending(a => a.CreatedOn).ToListAsync();
 
             return Ok(new
             {
-                message = "Asset list fetched successfully.",
-                success = true,
+                message    = "Asset list fetched successfully.",
+                success    = true,
                 totalCount = assets.Count,
                 filter = new
                 {
-                    fromDate = fromDate?.ToString("yyyy-MM-dd"),
-                    toDate = toDate?.ToString("yyyy-MM-dd")
+                    assignedFrom = q.AssignedFrom?.ToString("yyyy-MM-dd"),
+                    assignedTo   = q.AssignedTo?.ToString("yyyy-MM-dd"),
+                    createdFrom  = q.CreatedFrom?.ToString("yyyy-MM-dd"),
+                    createdTo    = q.CreatedTo?.ToString("yyyy-MM-dd")
                 },
                 data = assets.Select(a => MapAssetResponse(a, a.AssignedToUser?.UserName))
             });
@@ -1617,6 +1662,7 @@ namespace attendance_api.Controllers
         //  5. GET /api/Asset/history
         // ════════════════════════════════════════════════════════════════
         [HttpGet("history")]
+        [ProducesResponseType(StatusCodes.Status200OK)]   // Fix #8
         public async Task<IActionResult> GetAssetHistory(
             [FromQuery] int? assetId = null,
             [FromQuery] int? userId = null,
@@ -1639,7 +1685,7 @@ namespace attendance_api.Controllers
             else
             {
                 if (assetId.HasValue) query = query.Where(h => h.AssetId == assetId.Value);
-                if (userId.HasValue) query = query.Where(h => h.UserId == userId.Value);
+                if (userId.HasValue)  query = query.Where(h => h.UserId  == userId.Value);
             }
 
             if (!string.IsNullOrEmpty(action))
@@ -1647,7 +1693,6 @@ namespace attendance_api.Controllers
 
             if (fromDate.HasValue)
                 query = query.Where(h => h.ActionDate >= fromDate.Value.Date);
-
             if (toDate.HasValue)
                 query = query.Where(h => h.ActionDate <= toDate.Value.Date.AddDays(1).AddTicks(-1));
 
@@ -1670,16 +1715,16 @@ namespace attendance_api.Controllers
 
             var result = histories.Select(h => new AssetHistoryResponse
             {
-                HistoryId = h.HistoryId,
-                AssetId = h.AssetId,
-                AssetName = h.Asset?.AssetName,
-                AssetType = h.Asset?.AssetType,
-                UserId = h.UserId,
-                UserName = h.User?.UserName,
-                Action = h.Action,
-                Note = h.Note,
-                Condition = h.Condition,
-                ActionDate = h.ActionDate,
+                HistoryId        = h.HistoryId,
+                AssetId          = h.AssetId,
+                AssetName        = h.Asset?.AssetName,
+                AssetType        = h.Asset?.AssetType,
+                UserId           = h.UserId,
+                UserName         = h.User?.UserName,
+                Action           = h.Action,
+                Note             = h.Note,
+                Condition        = h.Condition,
+                ActionDate       = h.ActionDate,
                 ActionByUserName = h.ActionByUserId.HasValue
                                     ? adminNames.GetValueOrDefault(h.ActionByUserId.Value)
                                     : null
@@ -1687,15 +1732,15 @@ namespace attendance_api.Controllers
 
             return Ok(new
             {
-                message = "Asset history fetched successfully.",
-                success = true,
+                message    = "Asset history fetched successfully.",
+                success    = true,
                 totalCount = total,
                 page,
                 pageSize,
                 filter = new
                 {
                     fromDate = fromDate?.ToString("yyyy-MM-dd"),
-                    toDate = toDate?.ToString("yyyy-MM-dd")
+                    toDate   = toDate?.ToString("yyyy-MM-dd")
                 },
                 data = result
             });
@@ -1703,60 +1748,65 @@ namespace attendance_api.Controllers
 
         // ════════════════════════════════════════════════════════════════
         //  6. GET /api/Asset/summary
+        //  Fix #3: pehle saare assets memory mein load hote the, phir filter.
+        //          Ab DB hi filter karta hai — bahut fast hoga large data par.
         // ════════════════════════════════════════════════════════════════
         [HttpGet("summary")]
-        [Authorize(Roles = "admin,Admin")]
+        [Authorize(Roles = AdminPolicy)]   // Fix #5
+        [ProducesResponseType(StatusCodes.Status200OK)]   // Fix #8
         public async Task<IActionResult> GetAssetSummary(
             [FromQuery] DateTime? fromDate = null,
-            [FromQuery] DateTime? toDate = null)
+            [FromQuery] DateTime? toDate   = null)
         {
-            var allAssets = await _db.Assets
-                .Where(a => a.IsActive)
-                .ToListAsync();
-
-            var filteredAssets = allAssets.AsEnumerable();
+            // Fix #3: IQueryable — DB mein filter hoga, memory mein nahi
+            var query = _db.Assets.Where(a => a.IsActive).AsQueryable();
 
             if (fromDate.HasValue)
-                filteredAssets = filteredAssets.Where(a =>
+                query = query.Where(a =>
                     a.AssignedDate.HasValue && a.AssignedDate.Value.Date >= fromDate.Value.Date);
 
             if (toDate.HasValue)
-                filteredAssets = filteredAssets.Where(a =>
+                query = query.Where(a =>
                     a.AssignedDate.HasValue && a.AssignedDate.Value.Date <= toDate.Value.Date);
 
-            var filtered = filteredAssets.ToList();
-            var summarySource = (fromDate.HasValue || toDate.HasValue) ? filtered : allAssets;
+            var total     = await query.CountAsync();
+            var available = await query.CountAsync(a => a.Status == StatusAvailable);
+            var assigned  = await query.CountAsync(a => a.Status == StatusAssigned);
 
-            var summary = new AssetSummaryResponse
-            {
-                Total = summarySource.Count,
-                Available = summarySource.Count(a => a.Status == "available"),
-                Assigned = summarySource.Count(a => a.Status == "assigned"),
-                ByType = summarySource
-                    .GroupBy(a => a.AssetType)
-                    .Select(g => new AssetTypeCount { AssetType = g.Key, Count = g.Count() })
-                    .OrderByDescending(x => x.Count)
-                    .ToList()
-            };
+            var byType = await query
+                .GroupBy(a => a.AssetType)
+                .Select(g => new AssetTypeCount { AssetType = g.Key, Count = g.Count() })
+                .OrderByDescending(x => x.Count)
+                .ToListAsync();
 
             return Ok(new
             {
                 message = "Asset summary fetched successfully.",
                 success = true,
-                filter = new
+                filter  = new
                 {
                     fromDate = fromDate?.ToString("yyyy-MM-dd"),
-                    toDate = toDate?.ToString("yyyy-MM-dd")
+                    toDate   = toDate?.ToString("yyyy-MM-dd")
                 },
-                data = summary
+                data = new AssetSummaryResponse
+                {
+                    Total     = total,
+                    Available = available,
+                    Assigned  = assigned,
+                    ByType    = byType
+                }
             });
         }
 
         // ════════════════════════════════════════════════════════════════
-        //  7. POST /api/Asset/maintenance/start   (NO NEW TABLE)
+        //  7. POST /api/Asset/maintenance/start
+        //  Fix #4: JSON snapshot AssetHistory.Note mein save hoga
         // ════════════════════════════════════════════════════════════════
         [HttpPost("maintenance/start")]
-        [Authorize(Roles = "admin,Admin")]
+        [Authorize(Roles = AdminPolicy)]   // Fix #5
+        [ProducesResponseType(StatusCodes.Status200OK)]        // Fix #8
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> StartMaintenance([FromBody] StartMaintenanceRequest request)
         {
             if (!ModelState.IsValid)
@@ -1769,38 +1819,47 @@ namespace attendance_api.Controllers
             if (asset == null)
                 return NotFound(new { message = "Asset not found.", success = false });
 
-            if (asset.Status == "assigned")
+            if (asset.Status == StatusAssigned)
                 return BadRequest(new { message = "Asset is assigned. Please return it before maintenance.", success = false });
 
-            if (asset.Status == "maintenance")
+            if (asset.Status == StatusMaintenance)
                 return BadRequest(new { message = "Asset is already in maintenance.", success = false });
 
-            var adminId = GetCurrentUserId();
+            var adminId   = GetCurrentUserId();
+            var startedAt = DateTime.UtcNow;   // Fix #6
 
-            // ✅ Update same Assets table
-            asset.Status = "maintenance";
-            asset.UpdatedOn = DateTime.Now;
-
-            // These columns must exist in dbo.Assets (as you added via SQL)
-            asset.MaintenanceType = request.MaintenanceType?.ToLower() ?? "repair";
-            asset.MaintenanceVendorName = request.VendorName;
-            asset.MaintenanceTicketNo = request.TicketNo;
-            asset.MaintenanceIssue = request.IssueDescription;
-            asset.MaintenanceStartDate = DateTime.Now;
-            asset.MaintenanceEndDate = null;
-            asset.MaintenanceCost = null;
-            asset.MaintenanceResolution = null;
-            asset.MaintenanceCreatedByUserId = adminId;
+            asset.Status                       = StatusMaintenance;
+            asset.UpdatedOn                    = startedAt;
+            asset.MaintenanceType              = request.MaintenanceType.ToLower();
+            asset.MaintenanceVendorName        = request.VendorName;
+            asset.MaintenanceTicketNo          = request.TicketNo;
+            asset.MaintenanceIssue             = request.IssueDescription;
+            asset.MaintenanceStartDate         = startedAt;
+            asset.MaintenanceEndDate           = null;
+            asset.MaintenanceCost              = null;
+            asset.MaintenanceResolution        = null;
+            asset.MaintenanceCreatedByUserId   = adminId;
             asset.MaintenanceCompletedByUserId = null;
 
-            // ✅ Log in AssetHistories
+            // Fix #4: JSON snapshot — agli baar naya maintenance shuru hone par
+            // Asset row ke columns overwrite ho jayenge, lekin ye history mein
+            // permanent rahega. Saari details (vendor, ticket, issue) safe.
+            var snapshot = JsonSerializer.Serialize(new
+            {
+                type      = request.MaintenanceType,
+                vendor    = request.VendorName,
+                ticket    = request.TicketNo,
+                issue     = request.IssueDescription,
+                startedAt = startedAt
+            });
+
             _db.AssetHistories.Add(new AssetHistory
             {
-                AssetId = asset.AssetId,
-                UserId = null,
-                Action = "maintenance_started",
-                Note = request.IssueDescription,
-                ActionDate = DateTime.Now,
+                AssetId        = asset.AssetId,
+                UserId         = null,
+                Action         = "maintenance_started",
+                Note           = snapshot,      // Fix #4
+                ActionDate     = startedAt,     // Fix #6
                 ActionByUserId = adminId
             });
 
@@ -1810,49 +1869,66 @@ namespace attendance_api.Controllers
             {
                 message = $"Maintenance started for asset '{asset.AssetName}'.",
                 success = true,
-                data = MapMaintenanceFromAsset(asset)
+                data    = MapMaintenanceFromAsset(asset)
             });
         }
 
         // ════════════════════════════════════════════════════════════════
-        //  8. PUT /api/Asset/maintenance/complete (NO NEW TABLE)
+        //  8. PUT /api/Asset/maintenance/complete
+        //  Fix #1: request.AssetId (was: request.MaintenanceId)
+        //  Fix #4: JSON snapshot history mein save
         // ════════════════════════════════════════════════════════════════
         [HttpPut("maintenance/complete")]
-        [Authorize(Roles = "admin,Admin")]
+        [Authorize(Roles = AdminPolicy)]   // Fix #5
+        [ProducesResponseType(StatusCodes.Status200OK)]        // Fix #8
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> CompleteMaintenance([FromBody] CompleteMaintenanceRequest request)
         {
             if (!ModelState.IsValid)
                 return BadRequest(new { message = "Invalid request.", success = false, errors = ModelState });
 
-            // ✅ Here MaintenanceId is NOT available because no table.
-            // So we treat request.MaintenanceId as AssetId OR you can change DTO.
-            // Best: use AssetId in request. If you already use MaintenanceId in frontend, keep it as AssetId.
-            var assetId = request.MaintenanceId; // <-- IMPORTANT: treating MaintenanceId as AssetId
+            // Fix #1: request.AssetId — ab koi confusion nahi, naming clear hai
+            var asset = await _db.Assets
+                .FirstOrDefaultAsync(a => a.AssetId == request.AssetId && a.IsActive);
 
-            var asset = await _db.Assets.FirstOrDefaultAsync(a => a.AssetId == assetId && a.IsActive);
             if (asset == null)
                 return NotFound(new { message = "Asset not found.", success = false });
 
-            if (asset.Status != "maintenance")
+            if (asset.Status != StatusMaintenance)
                 return BadRequest(new { message = "Asset is not in maintenance.", success = false });
 
-            var adminId = GetCurrentUserId();
+            var adminId     = GetCurrentUserId();
+            var completedAt = DateTime.UtcNow;   // Fix #6
 
-            asset.Status = "available";
-            asset.UpdatedOn = DateTime.Now;
-
-            asset.MaintenanceEndDate = DateTime.Now;
-            asset.MaintenanceCost = request.Cost;
-            asset.MaintenanceResolution = request.ResolutionNote;
+            asset.Status                       = StatusAvailable;
+            asset.UpdatedOn                    = completedAt;
+            asset.MaintenanceEndDate           = completedAt;
+            asset.MaintenanceCost              = request.Cost;
+            asset.MaintenanceResolution        = request.ResolutionNote;
             asset.MaintenanceCompletedByUserId = adminId;
+
+            // Fix #4: complete hone par full snapshot — type, vendor, ticket,
+            // issue, resolution, cost, start aur end time sab preserve hoga.
+            var snapshot = JsonSerializer.Serialize(new
+            {
+                type        = asset.MaintenanceType,
+                vendor      = asset.MaintenanceVendorName,
+                ticket      = asset.MaintenanceTicketNo,
+                issue       = asset.MaintenanceIssue,
+                resolution  = request.ResolutionNote,
+                cost        = request.Cost,
+                startedAt   = asset.MaintenanceStartDate,
+                completedAt = completedAt
+            });
 
             _db.AssetHistories.Add(new AssetHistory
             {
-                AssetId = asset.AssetId,
-                UserId = null,
-                Action = "maintenance_completed",
-                Note = request.ResolutionNote,
-                ActionDate = DateTime.Now,
+                AssetId        = asset.AssetId,
+                UserId         = null,
+                Action         = "maintenance_completed",
+                Note           = snapshot,       // Fix #4
+                ActionDate     = completedAt,    // Fix #6
                 ActionByUserId = adminId
             });
 
@@ -1862,25 +1938,25 @@ namespace attendance_api.Controllers
             {
                 message = $"Maintenance completed for asset '{asset.AssetName}'.",
                 success = true,
-                data = MapMaintenanceFromAsset(asset)
+                data    = MapMaintenanceFromAsset(asset)
             });
         }
 
         // ════════════════════════════════════════════════════════════════
-        //  9. GET /api/Asset/maintenance/list  (NO NEW TABLE)
-        //     List assets which have maintenance info (or in maintenance)
+        //  9. GET /api/Asset/maintenance/list
         // ════════════════════════════════════════════════════════════════
         [HttpGet("maintenance/list")]
+        [ProducesResponseType(StatusCodes.Status200OK)]   // Fix #8
         public async Task<IActionResult> GetMaintenanceList(
             [FromQuery] int? assetId = null,
-            [FromQuery] string? status = null,          // open => maintenance , completed => available with enddate, etc.
-            [FromQuery] DateTime? fromDate = null,      // MaintenanceStartDate
+            [FromQuery] string? status = null,
+            [FromQuery] DateTime? fromDate = null,
             [FromQuery] DateTime? toDate = null,
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
             var query = _db.Assets
-                .Where(a => a.IsActive)
+                .Where(a => a.IsActive && a.MaintenanceStartDate != null)
                 .AsQueryable();
 
             if (!IsAdmin())
@@ -1889,33 +1965,25 @@ namespace attendance_api.Controllers
                 query = query.Where(a => a.AssignedToUserId == currentUserId);
             }
 
-            // only those having maintenance start date
-            query = query.Where(a => a.MaintenanceStartDate != null);
-
             if (assetId.HasValue)
                 query = query.Where(a => a.AssetId == assetId.Value);
 
-            // status mapping:
-            // open => Assets.Status == maintenance
-            // completed => MaintenanceEndDate != null
             if (!string.IsNullOrEmpty(status))
             {
                 var s = status.ToLower();
                 if (s == "open")
-                    query = query.Where(a => a.Status == "maintenance");
+                    query = query.Where(a => a.Status == StatusMaintenance);
                 else if (s == "completed")
                     query = query.Where(a => a.MaintenanceEndDate != null);
             }
 
             if (fromDate.HasValue)
                 query = query.Where(a => a.MaintenanceStartDate >= fromDate.Value.Date);
-
             if (toDate.HasValue)
                 query = query.Where(a => a.MaintenanceStartDate <= toDate.Value.Date.AddDays(1).AddTicks(-1));
 
             var total = await query.CountAsync();
-
-            var data = await query
+            var data  = await query
                 .OrderByDescending(a => a.MaintenanceStartDate)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
@@ -1923,15 +1991,15 @@ namespace attendance_api.Controllers
 
             return Ok(new
             {
-                message = "Maintenance list fetched successfully.",
-                success = true,
+                message    = "Maintenance list fetched successfully.",
+                success    = true,
                 totalCount = total,
                 page,
                 pageSize,
                 filter = new
                 {
                     fromDate = fromDate?.ToString("yyyy-MM-dd"),
-                    toDate = toDate?.ToString("yyyy-MM-dd")
+                    toDate   = toDate?.ToString("yyyy-MM-dd")
                 },
                 data = data.Select(MapMaintenanceFromAsset)
             });
@@ -1939,9 +2007,11 @@ namespace attendance_api.Controllers
 
         // ════════════════════════════════════════════════════════════════
         //  10. GET /api/Asset/maintenance/history?assetId=1
-        //     Maintenance events from dbo.AssetHistories only
         // ════════════════════════════════════════════════════════════════
         [HttpGet("maintenance/history")]
+        [ProducesResponseType(StatusCodes.Status200OK)]        // Fix #8
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> GetMaintenanceHistory([FromQuery] int assetId)
         {
             var asset = await _db.Assets.FirstOrDefaultAsync(a => a.AssetId == assetId && a.IsActive);
@@ -1963,67 +2033,75 @@ namespace attendance_api.Controllers
 
             return Ok(new
             {
-                message = "Maintenance history fetched successfully.",
-                success = true,
+                message    = "Maintenance history fetched successfully.",
+                success    = true,
                 totalCount = list.Count,
                 data = list.Select(h => new
                 {
                     h.HistoryId,
                     h.AssetId,
                     h.Action,
-                    h.Note,
+                    // Fix #4: Note mein ab JSON snapshot hai — parse karke return
+                    MaintenanceDetail = TryParseJson(h.Note),
                     h.ActionDate,
                     h.ActionByUserId
                 })
             });
         }
 
-        // ─── Helper: Map to Asset Response ────────────────────────────────
+        // ════════════════════════════════════════════════════════════════
+        //  Private Helpers — Fix #7: same file mein rakhe, separate nahi kiye
+        // ════════════════════════════════════════════════════════════════
+
         private static AssetResponse MapAssetResponse(Asset a, string? assignedUserName) =>
             new AssetResponse
             {
-                AssetId = a.AssetId,
-                AssetName = a.AssetName,
-                AssetType = a.AssetType,
-                AssetCode = a.AssetCode,
-                SerialNumber = a.SerialNumber,
-                Brand = a.Brand,
-                Model = a.Model,
-                Description = a.Description,
-                Status = a.Status,
-                AssignedToUserId = a.AssignedToUserId,
+                AssetId            = a.AssetId,
+                AssetName          = a.AssetName,
+                AssetType          = a.AssetType,
+                AssetCode          = a.AssetCode,
+                SerialNumber       = a.SerialNumber,
+                Brand              = a.Brand,
+                Model              = a.Model,
+                Description        = a.Description,
+                Status             = a.Status,
+                AssignedToUserId   = a.AssignedToUserId,
                 AssignedToUserName = assignedUserName,
-                AssignedDate = a.AssignedDate,
+                AssignedDate       = a.AssignedDate,
                 ExpectedReturnDate = a.ExpectedReturnDate,
-                AssignmentNote = a.AssignmentNote,
-                ReturnedDate = a.ReturnedDate,
-                ReturnNote = a.ReturnNote,
-                ReturnCondition = a.ReturnCondition,
-                CreatedOn = a.CreatedOn
+                AssignmentNote     = a.AssignmentNote,
+                ReturnedDate       = a.ReturnedDate,
+                ReturnNote         = a.ReturnNote,
+                ReturnCondition    = a.ReturnCondition,
+                CreatedOn          = a.CreatedOn
             };
 
-        // ─── Helper: Map Maintenance from Asset (NO TABLE) ────────────────
         private static MaintenanceResponse MapMaintenanceFromAsset(Asset a) =>
             new MaintenanceResponse
             {
-                // ✅ No maintenance table, so we use AssetId as MaintenanceId for API consistency
-                MaintenanceId = a.AssetId,
-                AssetId = a.AssetId,
-                AssetName = a.AssetName,
-                AssetType = a.AssetType,
-
-                MaintenanceType = a.MaintenanceType ?? "",
-                VendorName = a.MaintenanceVendorName,
-                TicketNo = a.MaintenanceTicketNo,
+                MaintenanceId    = a.AssetId,
+                AssetId          = a.AssetId,
+                AssetName        = a.AssetName,
+                AssetType        = a.AssetType,
+                MaintenanceType  = a.MaintenanceType ?? string.Empty,
+                VendorName       = a.MaintenanceVendorName,
+                TicketNo         = a.MaintenanceTicketNo,
                 IssueDescription = a.MaintenanceIssue,
-
-                StartDate = a.MaintenanceStartDate ?? a.CreatedOn,
-                EndDate = a.MaintenanceEndDate,
-
-                // open/completed mapping
-                Status = a.Status == "maintenance" ? "open" : (a.MaintenanceEndDate != null ? "completed" : "open"),
-                Cost = a.MaintenanceCost,
-                ResolutionNote = a.MaintenanceResolution
+                StartDate        = a.MaintenanceStartDate ?? a.CreatedOn,
+                EndDate          = a.MaintenanceEndDate,
+                Status           = a.Status == StatusMaintenance
+                                    ? "open"
+                                    : (a.MaintenanceEndDate != null ? "completed" : "open"),
+                Cost             = a.MaintenanceCost,
+                ResolutionNote   = a.MaintenanceResolution
             };
+
+        // Fix #4: Note field mein stored JSON ko safely parse karta hai
+        private static object? TryParseJson(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            try { return JsonSerializer.Deserialize<JsonElement>(json); }
+            catch { return json; }  // JSON na ho toh raw string return
+        }
     }
 }

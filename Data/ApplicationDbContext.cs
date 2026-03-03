@@ -1237,7 +1237,7 @@
 
 
 
-// ======================= Data/ApplicationDbContext.cs (FINAL) =======================
+// ======================= Data/ApplicationDbContext.cs =======================
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using attendance_api.Models;
@@ -1262,46 +1262,31 @@ namespace attendance_api.Data
         public DbSet<Holiday> Holidays { get; set; } = null!;
         public DbSet<WFHRequest> WFHRequests { get; set; } = null!;
         public DbSet<PerformanceReview> PerformanceReviews { get; set; } = null!;
-
         public DbSet<Notification> Notifications { get; set; } = null!;
         public DbSet<Faq> Faqs { get; set; } = null!;
         public DbSet<ContactMessage> ContactMessages { get; set; } = null!;
-
         public DbSet<Leave> Leaves { get; set; } = null!;
         public DbSet<LocationTracking> LocationTrackings { get; set; } = null!;
         public DbSet<DailyTask> DailyTasks { get; set; } = null!;
-
         public DbSet<UserLoginHistory> UserLoginHistories { get; set; } = null!;
-
         public DbSet<Asset> Assets { get; set; } = null!;
         public DbSet<AssetHistory> AssetHistories { get; set; } = null!;
-
-        // ❌ NO NEW TABLE:
-        // public DbSet<AssetMaintenance> AssetMaintenances { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-            // ───────────────────────────────────────────────────────────────
-            // ✅ KEEP YOUR EXISTING MAPPINGS HERE (Users, Roles, Leaves, etc.)
-            // (Paste your existing entity mappings above/below as needed)
-            // ───────────────────────────────────────────────────────────────
-
-            // ✅ Attendance decimal precision (fix EF warnings)
+            // ✅ Attendance decimal precision
             modelBuilder.Entity<Attendance>(entity =>
             {
-                // If you already have Attendance mapping elsewhere,
-                // just copy these Property(...) lines into that block.
                 entity.Property(e => e.InLatitude).HasColumnType("decimal(10,7)");
                 entity.Property(e => e.InLongitude).HasColumnType("decimal(10,7)");
                 entity.Property(e => e.OutLatitude).HasColumnType("decimal(10,7)");
                 entity.Property(e => e.OutLongitude).HasColumnType("decimal(10,7)");
-
                 entity.Property(e => e.TotalHours).HasColumnType("decimal(6,2)");
             });
 
-            // ✅ DailyTask decimal precision (fix EF warnings)
+            // ✅ DailyTask decimal precision
             modelBuilder.Entity<DailyTask>(entity =>
             {
                 entity.Property(e => e.HoursSpent).HasColumnType("decimal(6,2)");
@@ -1312,9 +1297,12 @@ namespace attendance_api.Data
             {
                 entity.HasKey(e => e.AssetId);
 
+                // Fix #11: index covers ALL rows (active + inactive)
+                // Pehle sirf IsActive=true rows check hoti thi, isse inactive
+                // asset ka code reuse ho sakta tha aur reactivate karne par DB crash.
                 entity.HasIndex(e => e.AssetCode)
                       .IsUnique()
-                      .HasFilter("[AssetCode] IS NOT NULL");
+                      .HasFilter("[AssetCode] IS NOT NULL");  // NULL allowed, non-null must be unique
 
                 entity.Property(e => e.AssetName).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.AssetType).IsRequired().HasMaxLength(50);
@@ -1329,22 +1317,17 @@ namespace attendance_api.Data
                 entity.Property(e => e.ReturnNote).HasMaxLength(500);
                 entity.Property(e => e.ReturnCondition).HasMaxLength(20);
 
-                // ✅ Maintenance columns mapping (same Assets table)
                 entity.Property(e => e.MaintenanceType).HasMaxLength(30);
                 entity.Property(e => e.MaintenanceVendorName).HasMaxLength(100);
                 entity.Property(e => e.MaintenanceTicketNo).HasMaxLength(100);
                 entity.Property(e => e.MaintenanceIssue).HasMaxLength(500);
-
-                entity.Property(e => e.MaintenanceStartDate);
-                entity.Property(e => e.MaintenanceEndDate);
                 entity.Property(e => e.MaintenanceCost).HasColumnType("decimal(18,2)");
                 entity.Property(e => e.MaintenanceResolution).HasMaxLength(500);
 
-                entity.Property(e => e.MaintenanceCreatedByUserId);
-                entity.Property(e => e.MaintenanceCompletedByUserId);
-
                 entity.Property(e => e.IsActive).HasDefaultValue(true);
-                entity.Property(e => e.CreatedOn).HasDefaultValueSql("GETDATE()");
+
+                // Fix #6: GETUTCDATE() instead of GETDATE()
+                entity.Property(e => e.CreatedOn).HasDefaultValueSql("GETUTCDATE()");
 
                 entity.HasOne(e => e.AssignedToUser)
                       .WithMany()
@@ -1366,14 +1349,23 @@ namespace attendance_api.Data
                 entity.HasIndex(e => e.UserId);
 
                 entity.Property(e => e.Action).IsRequired().HasMaxLength(50);
-                entity.Property(e => e.Note).HasMaxLength(500);
-                entity.Property(e => e.Condition).HasMaxLength(20);
-                entity.Property(e => e.ActionDate).HasDefaultValueSql("GETDATE()");
 
+                // Fix #4: 2000 chars for JSON maintenance snapshots
+                entity.Property(e => e.Note).HasMaxLength(2000);
+
+                entity.Property(e => e.Condition).HasMaxLength(20);
+
+                // Fix #6: GETUTCDATE() instead of GETDATE()
+                entity.Property(e => e.ActionDate).HasDefaultValueSql("GETUTCDATE()");
+
+                // Fix #10: Cascade → Restrict
+                // Asset hard-delete karne par history silently delete na ho.
+                // Asset ko IsActive=false karke soft-delete karo.
+                // Agar koi hard-delete try kare toh DB error dega — safe!
                 entity.HasOne(e => e.Asset)
                       .WithMany(a => a.Histories)
                       .HasForeignKey(e => e.AssetId)
-                      .OnDelete(DeleteBehavior.Cascade);
+                      .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(e => e.User)
                       .WithMany()
