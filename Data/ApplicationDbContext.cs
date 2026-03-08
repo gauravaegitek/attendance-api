@@ -1391,8 +1391,178 @@
 
 
 
+// // ======================= Data/ApplicationDbContext.cs =======================
+// using Microsoft.AspNetCore.Authorization;
+// using Microsoft.EntityFrameworkCore;
+// using Microsoft.EntityFrameworkCore.Diagnostics;
+// using attendance_api.Models;
+
+// namespace attendance_api.Data
+// {
+//     public class ApplicationDbContext : DbContext
+//     {
+//         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+//             : base(options) { }
+
+//         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+//         {
+//             optionsBuilder.ConfigureWarnings(warnings =>
+//                 warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
+//         }
+
+//         // ─── DbSets ───────────────────────────────────────────────────────
+//         public DbSet<User> Users { get; set; } = null!;
+//         public DbSet<Attendance> Attendances { get; set; } = null!;
+//         public DbSet<Role> Roles { get; set; } = null!;
+//         public DbSet<Holiday> Holidays { get; set; } = null!;
+//         public DbSet<WFHRequest> WFHRequests { get; set; } = null!;
+//         public DbSet<PerformanceReview> PerformanceReviews { get; set; } = null!;
+//         public DbSet<Notification> Notifications { get; set; } = null!;
+//         public DbSet<Faq> Faqs { get; set; } = null!;
+//         public DbSet<ContactMessage> ContactMessages { get; set; } = null!;
+//         public DbSet<Leave> Leaves { get; set; } = null!;
+//         // public DbSet<LocationTracking> LocationTrackings { get; set; } = null!;
+//         public DbSet<DailyTask> DailyTasks { get; set; } = null!;
+//         public DbSet<UserLoginHistory> UserLoginHistories { get; set; } = null!;
+//         public DbSet<Asset> Assets { get; set; } = null!;
+//         public DbSet<AssetHistory> AssetHistories { get; set; } = null!;
+//         public DbSet<EmployeeDocument> EmployeeDocuments { get; set; } = null!;   // ← NEW
+
+//         protected override void OnModelCreating(ModelBuilder modelBuilder)
+//         {
+//             base.OnModelCreating(modelBuilder);
+
+//             // ✅ Attendance decimal precision
+//             modelBuilder.Entity<Attendance>(entity =>
+//             {
+//                 entity.Property(e => e.InLatitude).HasColumnType("decimal(10,7)");
+//                 entity.Property(e => e.InLongitude).HasColumnType("decimal(10,7)");
+//                 entity.Property(e => e.OutLatitude).HasColumnType("decimal(10,7)");
+//                 entity.Property(e => e.OutLongitude).HasColumnType("decimal(10,7)");
+//                 entity.Property(e => e.TotalHours).HasColumnType("decimal(6,2)");
+//             });
+
+//             // ✅ DailyTask decimal precision
+//             modelBuilder.Entity<DailyTask>(entity =>
+//             {
+//                 entity.Property(e => e.HoursSpent).HasColumnType("decimal(6,2)");
+//             });
+
+//             // ✅ Asset
+//             modelBuilder.Entity<Asset>(entity =>
+//             {
+//                 entity.HasKey(e => e.AssetId);
+
+//                 entity.HasIndex(e => e.AssetCode)
+//                       .IsUnique()
+//                       .HasFilter("[AssetCode] IS NOT NULL");
+
+//                 entity.Property(e => e.AssetName).IsRequired().HasMaxLength(100);
+//                 entity.Property(e => e.AssetType).IsRequired().HasMaxLength(50);
+//                 entity.Property(e => e.AssetCode).HasMaxLength(100);
+//                 entity.Property(e => e.SerialNumber).HasMaxLength(100);
+//                 entity.Property(e => e.Brand).HasMaxLength(100);
+//                 entity.Property(e => e.Model).HasMaxLength(100);
+//                 entity.Property(e => e.Description).HasMaxLength(500);
+
+//                 entity.Property(e => e.Status).HasMaxLength(20).HasDefaultValue("available");
+//                 entity.Property(e => e.AssignmentNote).HasMaxLength(500);
+//                 entity.Property(e => e.ReturnNote).HasMaxLength(500);
+//                 entity.Property(e => e.ReturnCondition).HasMaxLength(20);
+
+//                 entity.Property(e => e.MaintenanceType).HasMaxLength(30);
+//                 entity.Property(e => e.MaintenanceVendorName).HasMaxLength(100);
+//                 entity.Property(e => e.MaintenanceTicketNo).HasMaxLength(100);
+//                 entity.Property(e => e.MaintenanceIssue).HasMaxLength(500);
+//                 entity.Property(e => e.MaintenanceCost).HasColumnType("decimal(18,2)");
+//                 entity.Property(e => e.MaintenanceResolution).HasMaxLength(500);
+
+//                 entity.Property(e => e.IsActive).HasDefaultValue(true);
+//                 entity.Property(e => e.CreatedOn).HasDefaultValueSql("GETUTCDATE()");
+
+//                 entity.HasOne(e => e.AssignedToUser)
+//                       .WithMany()
+//                       .HasForeignKey(e => e.AssignedToUserId)
+//                       .OnDelete(DeleteBehavior.SetNull);
+
+//                 entity.HasOne(e => e.CreatedByUser)
+//                       .WithMany()
+//                       .HasForeignKey(e => e.CreatedByUserId)
+//                       .OnDelete(DeleteBehavior.NoAction);
+//             });
+
+//             // ✅ AssetHistory
+//             modelBuilder.Entity<AssetHistory>(entity =>
+//             {
+//                 entity.HasKey(e => e.HistoryId);
+
+//                 entity.HasIndex(e => e.AssetId);
+//                 entity.HasIndex(e => e.UserId);
+
+//                 entity.Property(e => e.Action).IsRequired().HasMaxLength(50);
+//                 entity.Property(e => e.Note).HasMaxLength(2000);
+//                 entity.Property(e => e.Condition).HasMaxLength(20);
+//                 entity.Property(e => e.ActionDate).HasDefaultValueSql("GETUTCDATE()");
+
+//                 entity.HasOne(e => e.Asset)
+//                       .WithMany(a => a.Histories)
+//                       .HasForeignKey(e => e.AssetId)
+//                       .OnDelete(DeleteBehavior.Restrict);
+
+//                 entity.HasOne(e => e.User)
+//                       .WithMany()
+//                       .HasForeignKey(e => e.UserId)
+//                       .OnDelete(DeleteBehavior.NoAction);
+//             });
+
+//             // ✅ EmployeeDocument
+//             modelBuilder.Entity<EmployeeDocument>(entity =>
+//             {
+//                 entity.HasKey(e => e.DocumentId);
+
+//                 // Fast lookup by employee
+//                 entity.HasIndex(e => e.EmployeeId);
+
+//                 // Fast lookup by document type
+//                 entity.HasIndex(e => e.DocumentType);
+
+//                 entity.Property(e => e.EmployeeId).IsRequired();
+//                 entity.Property(e => e.DocumentType).IsRequired().HasMaxLength(100);
+//                 entity.Property(e => e.Description).HasMaxLength(255);
+//                 entity.Property(e => e.FileName).IsRequired().HasMaxLength(255);
+//                 entity.Property(e => e.FilePath).IsRequired().HasMaxLength(500);
+//                 entity.Property(e => e.FileExtension).HasMaxLength(20);
+//                 entity.Property(e => e.IsDeleted).HasDefaultValue(false);
+
+//                 // GETUTCDATE() — same as Asset
+//                 entity.Property(e => e.UploadedAt).HasDefaultValueSql("GETUTCDATE()");
+
+//                 // Restrict — soft delete preferred (IsDeleted = true)
+//                 // Employee delete hone par documents silently delete na ho
+//                 entity.HasOne(e => e.Employee)
+//                       .WithMany()
+//                       .HasForeignKey(e => e.EmployeeId)
+//                       .OnDelete(DeleteBehavior.Restrict);
+
+//                 entity.HasOne(e => e.UploadedByUser)
+//                       .WithMany()
+//                       .HasForeignKey(e => e.UploadedByUserId)
+//                       .OnDelete(DeleteBehavior.NoAction);
+//             });
+//         }
+//     }
+// }
+
+
+
+
+
+
+
+
+
+
 // ======================= Data/ApplicationDbContext.cs =======================
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using attendance_api.Models;
@@ -1411,22 +1581,23 @@ namespace attendance_api.Data
         }
 
         // ─── DbSets ───────────────────────────────────────────────────────
-        public DbSet<User> Users { get; set; } = null!;
-        public DbSet<Attendance> Attendances { get; set; } = null!;
-        public DbSet<Role> Roles { get; set; } = null!;
-        public DbSet<Holiday> Holidays { get; set; } = null!;
-        public DbSet<WFHRequest> WFHRequests { get; set; } = null!;
-        public DbSet<PerformanceReview> PerformanceReviews { get; set; } = null!;
-        public DbSet<Notification> Notifications { get; set; } = null!;
-        public DbSet<Faq> Faqs { get; set; } = null!;
-        public DbSet<ContactMessage> ContactMessages { get; set; } = null!;
-        public DbSet<Leave> Leaves { get; set; } = null!;
-        // public DbSet<LocationTracking> LocationTrackings { get; set; } = null!;
-        public DbSet<DailyTask> DailyTasks { get; set; } = null!;
+        public DbSet<User>             Users              { get; set; } = null!;
+        public DbSet<Attendance>       Attendances        { get; set; } = null!;
+        public DbSet<Role>             Roles              { get; set; } = null!;
+        public DbSet<Holiday>          Holidays           { get; set; } = null!;
+        public DbSet<WFHRequest>       WFHRequests        { get; set; } = null!;
+        public DbSet<PerformanceReview>PerformanceReviews { get; set; } = null!;
+        public DbSet<Notification>     Notifications      { get; set; } = null!;
+        public DbSet<Faq>              Faqs               { get; set; } = null!;
+        public DbSet<ContactMessage>   ContactMessages    { get; set; } = null!;
+        public DbSet<Leave>            Leaves             { get; set; } = null!;
+        public DbSet<LocationTracking> LocationTrackings  { get; set; } = null!;
+        public DbSet<DailyTask>        DailyTasks         { get; set; } = null!;
         public DbSet<UserLoginHistory> UserLoginHistories { get; set; } = null!;
-        public DbSet<Asset> Assets { get; set; } = null!;
-        public DbSet<AssetHistory> AssetHistories { get; set; } = null!;
-        public DbSet<EmployeeDocument> EmployeeDocuments { get; set; } = null!;   // ← NEW
+        public DbSet<Asset>            Assets             { get; set; } = null!;
+        public DbSet<AssetHistory>     AssetHistories     { get; set; } = null!;
+        public DbSet<EmployeeDocument> EmployeeDocuments  { get; set; } = null!;
+        public DbSet<PayrollRecord>    PayrollRecords     { get; set; } = null!;   // ← NEW
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -1520,10 +1691,7 @@ namespace attendance_api.Data
             {
                 entity.HasKey(e => e.DocumentId);
 
-                // Fast lookup by employee
                 entity.HasIndex(e => e.EmployeeId);
-
-                // Fast lookup by document type
                 entity.HasIndex(e => e.DocumentType);
 
                 entity.Property(e => e.EmployeeId).IsRequired();
@@ -1533,12 +1701,8 @@ namespace attendance_api.Data
                 entity.Property(e => e.FilePath).IsRequired().HasMaxLength(500);
                 entity.Property(e => e.FileExtension).HasMaxLength(20);
                 entity.Property(e => e.IsDeleted).HasDefaultValue(false);
-
-                // GETUTCDATE() — same as Asset
                 entity.Property(e => e.UploadedAt).HasDefaultValueSql("GETUTCDATE()");
 
-                // Restrict — soft delete preferred (IsDeleted = true)
-                // Employee delete hone par documents silently delete na ho
                 entity.HasOne(e => e.Employee)
                       .WithMany()
                       .HasForeignKey(e => e.EmployeeId)
@@ -1548,6 +1712,41 @@ namespace attendance_api.Data
                       .WithMany()
                       .HasForeignKey(e => e.UploadedByUserId)
                       .OnDelete(DeleteBehavior.NoAction);
+            });
+
+            // ✅ PayrollRecord
+            modelBuilder.Entity<PayrollRecord>(entity =>
+            {
+                entity.HasKey(e => e.PayrollId);
+
+                // One payroll per employee per month (active only)
+                entity.HasIndex(p => new { p.EmployeeId, p.Month, p.Year })
+                      .HasFilter("[IsDeleted] = 0")
+                      .IsUnique();
+
+                entity.Property(e => e.BasicSalary).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.PerDaySalary).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.AbsentDeduction).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.LateDeduction).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.ManualDeduction).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.TotalDeduction).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.NetSalary).HasColumnType("decimal(18,2)");
+
+                entity.Property(e => e.Status)
+                      .HasMaxLength(20)
+                      .HasDefaultValue("draft");
+
+                entity.Property(e => e.ManualDeductionReason).HasMaxLength(500);
+                entity.Property(e => e.Remarks).HasMaxLength(500);
+                entity.Property(e => e.IsDeleted).HasDefaultValue(false);
+
+                entity.Property(e => e.GeneratedAt)
+                      .HasDefaultValueSql("GETUTCDATE()");
+
+                entity.HasOne(e => e.Employee)
+                      .WithMany()
+                      .HasForeignKey(e => e.EmployeeId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
         }
     }

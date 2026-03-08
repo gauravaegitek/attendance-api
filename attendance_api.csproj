@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <!-- Authentication & JWT -->
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.3" />
     
     <!-- Entity Framework Core 10 -->
