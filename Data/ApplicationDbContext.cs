@@ -1237,7 +1237,162 @@
 
 
 
+// // ======================= Data/ApplicationDbContext.cs =======================
+// using Microsoft.EntityFrameworkCore;
+// using Microsoft.EntityFrameworkCore.Diagnostics;
+// using attendance_api.Models;
+
+// namespace attendance_api.Data
+// {
+//     public class ApplicationDbContext : DbContext
+//     {
+//         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+//             : base(options) { }
+
+//         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+//         {
+//             optionsBuilder.ConfigureWarnings(warnings =>
+//                 warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
+//         }
+
+//         // ─── DbSets ───────────────────────────────────────────────────────
+//         public DbSet<User> Users { get; set; } = null!;
+//         public DbSet<Attendance> Attendances { get; set; } = null!;
+//         public DbSet<Role> Roles { get; set; } = null!;
+//         public DbSet<Holiday> Holidays { get; set; } = null!;
+//         public DbSet<WFHRequest> WFHRequests { get; set; } = null!;
+//         public DbSet<PerformanceReview> PerformanceReviews { get; set; } = null!;
+//         public DbSet<Notification> Notifications { get; set; } = null!;
+//         public DbSet<Faq> Faqs { get; set; } = null!;
+//         public DbSet<ContactMessage> ContactMessages { get; set; } = null!;
+//         public DbSet<Leave> Leaves { get; set; } = null!;
+//         public DbSet<LocationTracking> LocationTrackings { get; set; } = null!;
+//         public DbSet<DailyTask> DailyTasks { get; set; } = null!;
+//         public DbSet<UserLoginHistory> UserLoginHistories { get; set; } = null!;
+//         public DbSet<Asset> Assets { get; set; } = null!;
+//         public DbSet<AssetHistory> AssetHistories { get; set; } = null!;
+
+//         protected override void OnModelCreating(ModelBuilder modelBuilder)
+//         {
+//             base.OnModelCreating(modelBuilder);
+
+//             // ✅ Attendance decimal precision
+//             modelBuilder.Entity<Attendance>(entity =>
+//             {
+//                 entity.Property(e => e.InLatitude).HasColumnType("decimal(10,7)");
+//                 entity.Property(e => e.InLongitude).HasColumnType("decimal(10,7)");
+//                 entity.Property(e => e.OutLatitude).HasColumnType("decimal(10,7)");
+//                 entity.Property(e => e.OutLongitude).HasColumnType("decimal(10,7)");
+//                 entity.Property(e => e.TotalHours).HasColumnType("decimal(6,2)");
+//             });
+
+//             // ✅ DailyTask decimal precision
+//             modelBuilder.Entity<DailyTask>(entity =>
+//             {
+//                 entity.Property(e => e.HoursSpent).HasColumnType("decimal(6,2)");
+//             });
+
+//             // ✅ Asset
+//             modelBuilder.Entity<Asset>(entity =>
+//             {
+//                 entity.HasKey(e => e.AssetId);
+
+//                 // Fix #11: index covers ALL rows (active + inactive)
+//                 // Pehle sirf IsActive=true rows check hoti thi, isse inactive
+//                 // asset ka code reuse ho sakta tha aur reactivate karne par DB crash.
+//                 entity.HasIndex(e => e.AssetCode)
+//                       .IsUnique()
+//                       .HasFilter("[AssetCode] IS NOT NULL");  // NULL allowed, non-null must be unique
+
+//                 entity.Property(e => e.AssetName).IsRequired().HasMaxLength(100);
+//                 entity.Property(e => e.AssetType).IsRequired().HasMaxLength(50);
+//                 entity.Property(e => e.AssetCode).HasMaxLength(100);
+//                 entity.Property(e => e.SerialNumber).HasMaxLength(100);
+//                 entity.Property(e => e.Brand).HasMaxLength(100);
+//                 entity.Property(e => e.Model).HasMaxLength(100);
+//                 entity.Property(e => e.Description).HasMaxLength(500);
+
+//                 entity.Property(e => e.Status).HasMaxLength(20).HasDefaultValue("available");
+//                 entity.Property(e => e.AssignmentNote).HasMaxLength(500);
+//                 entity.Property(e => e.ReturnNote).HasMaxLength(500);
+//                 entity.Property(e => e.ReturnCondition).HasMaxLength(20);
+
+//                 entity.Property(e => e.MaintenanceType).HasMaxLength(30);
+//                 entity.Property(e => e.MaintenanceVendorName).HasMaxLength(100);
+//                 entity.Property(e => e.MaintenanceTicketNo).HasMaxLength(100);
+//                 entity.Property(e => e.MaintenanceIssue).HasMaxLength(500);
+//                 entity.Property(e => e.MaintenanceCost).HasColumnType("decimal(18,2)");
+//                 entity.Property(e => e.MaintenanceResolution).HasMaxLength(500);
+
+//                 entity.Property(e => e.IsActive).HasDefaultValue(true);
+
+//                 // Fix #6: GETUTCDATE() instead of GETDATE()
+//                 entity.Property(e => e.CreatedOn).HasDefaultValueSql("GETUTCDATE()");
+
+//                 entity.HasOne(e => e.AssignedToUser)
+//                       .WithMany()
+//                       .HasForeignKey(e => e.AssignedToUserId)
+//                       .OnDelete(DeleteBehavior.SetNull);
+
+//                 entity.HasOne(e => e.CreatedByUser)
+//                       .WithMany()
+//                       .HasForeignKey(e => e.CreatedByUserId)
+//                       .OnDelete(DeleteBehavior.NoAction);
+//             });
+
+//             // ✅ AssetHistory
+//             modelBuilder.Entity<AssetHistory>(entity =>
+//             {
+//                 entity.HasKey(e => e.HistoryId);
+
+//                 entity.HasIndex(e => e.AssetId);
+//                 entity.HasIndex(e => e.UserId);
+
+//                 entity.Property(e => e.Action).IsRequired().HasMaxLength(50);
+
+//                 // Fix #4: 2000 chars for JSON maintenance snapshots
+//                 entity.Property(e => e.Note).HasMaxLength(2000);
+
+//                 entity.Property(e => e.Condition).HasMaxLength(20);
+
+//                 // Fix #6: GETUTCDATE() instead of GETDATE()
+//                 entity.Property(e => e.ActionDate).HasDefaultValueSql("GETUTCDATE()");
+
+//                 // Fix #10: Cascade → Restrict
+//                 // Asset hard-delete karne par history silently delete na ho.
+//                 // Asset ko IsActive=false karke soft-delete karo.
+//                 // Agar koi hard-delete try kare toh DB error dega — safe!
+//                 entity.HasOne(e => e.Asset)
+//                       .WithMany(a => a.Histories)
+//                       .HasForeignKey(e => e.AssetId)
+//                       .OnDelete(DeleteBehavior.Restrict);
+
+//                 entity.HasOne(e => e.User)
+//                       .WithMany()
+//                       .HasForeignKey(e => e.UserId)
+//                       .OnDelete(DeleteBehavior.NoAction);
+//             });
+//         }
+//     }
+// }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ======================= Data/ApplicationDbContext.cs =======================
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using attendance_api.Models;
@@ -1266,11 +1421,12 @@ namespace attendance_api.Data
         public DbSet<Faq> Faqs { get; set; } = null!;
         public DbSet<ContactMessage> ContactMessages { get; set; } = null!;
         public DbSet<Leave> Leaves { get; set; } = null!;
-        public DbSet<LocationTracking> LocationTrackings { get; set; } = null!;
+        // public DbSet<LocationTracking> LocationTrackings { get; set; } = null!;
         public DbSet<DailyTask> DailyTasks { get; set; } = null!;
         public DbSet<UserLoginHistory> UserLoginHistories { get; set; } = null!;
         public DbSet<Asset> Assets { get; set; } = null!;
         public DbSet<AssetHistory> AssetHistories { get; set; } = null!;
+        public DbSet<EmployeeDocument> EmployeeDocuments { get; set; } = null!;   // ← NEW
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -1297,12 +1453,9 @@ namespace attendance_api.Data
             {
                 entity.HasKey(e => e.AssetId);
 
-                // Fix #11: index covers ALL rows (active + inactive)
-                // Pehle sirf IsActive=true rows check hoti thi, isse inactive
-                // asset ka code reuse ho sakta tha aur reactivate karne par DB crash.
                 entity.HasIndex(e => e.AssetCode)
                       .IsUnique()
-                      .HasFilter("[AssetCode] IS NOT NULL");  // NULL allowed, non-null must be unique
+                      .HasFilter("[AssetCode] IS NOT NULL");
 
                 entity.Property(e => e.AssetName).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.AssetType).IsRequired().HasMaxLength(50);
@@ -1325,8 +1478,6 @@ namespace attendance_api.Data
                 entity.Property(e => e.MaintenanceResolution).HasMaxLength(500);
 
                 entity.Property(e => e.IsActive).HasDefaultValue(true);
-
-                // Fix #6: GETUTCDATE() instead of GETDATE()
                 entity.Property(e => e.CreatedOn).HasDefaultValueSql("GETUTCDATE()");
 
                 entity.HasOne(e => e.AssignedToUser)
@@ -1349,19 +1500,10 @@ namespace attendance_api.Data
                 entity.HasIndex(e => e.UserId);
 
                 entity.Property(e => e.Action).IsRequired().HasMaxLength(50);
-
-                // Fix #4: 2000 chars for JSON maintenance snapshots
                 entity.Property(e => e.Note).HasMaxLength(2000);
-
                 entity.Property(e => e.Condition).HasMaxLength(20);
-
-                // Fix #6: GETUTCDATE() instead of GETDATE()
                 entity.Property(e => e.ActionDate).HasDefaultValueSql("GETUTCDATE()");
 
-                // Fix #10: Cascade → Restrict
-                // Asset hard-delete karne par history silently delete na ho.
-                // Asset ko IsActive=false karke soft-delete karo.
-                // Agar koi hard-delete try kare toh DB error dega — safe!
                 entity.HasOne(e => e.Asset)
                       .WithMany(a => a.Histories)
                       .HasForeignKey(e => e.AssetId)
@@ -1370,6 +1512,41 @@ namespace attendance_api.Data
                 entity.HasOne(e => e.User)
                       .WithMany()
                       .HasForeignKey(e => e.UserId)
+                      .OnDelete(DeleteBehavior.NoAction);
+            });
+
+            // ✅ EmployeeDocument
+            modelBuilder.Entity<EmployeeDocument>(entity =>
+            {
+                entity.HasKey(e => e.DocumentId);
+
+                // Fast lookup by employee
+                entity.HasIndex(e => e.EmployeeId);
+
+                // Fast lookup by document type
+                entity.HasIndex(e => e.DocumentType);
+
+                entity.Property(e => e.EmployeeId).IsRequired();
+                entity.Property(e => e.DocumentType).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.Description).HasMaxLength(255);
+                entity.Property(e => e.FileName).IsRequired().HasMaxLength(255);
+                entity.Property(e => e.FilePath).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.FileExtension).HasMaxLength(20);
+                entity.Property(e => e.IsDeleted).HasDefaultValue(false);
+
+                // GETUTCDATE() — same as Asset
+                entity.Property(e => e.UploadedAt).HasDefaultValueSql("GETUTCDATE()");
+
+                // Restrict — soft delete preferred (IsDeleted = true)
+                // Employee delete hone par documents silently delete na ho
+                entity.HasOne(e => e.Employee)
+                      .WithMany()
+                      .HasForeignKey(e => e.EmployeeId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(e => e.UploadedByUser)
+                      .WithMany()
+                      .HasForeignKey(e => e.UploadedByUserId)
                       .OnDelete(DeleteBehavior.NoAction);
             });
         }

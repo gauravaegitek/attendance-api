@@ -461,6 +461,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IPdfService, PdfService>();
+builder.Services.AddScoped<IDocumentPdfService, DocumentPdfService>();
 
 // ✅ Configure CORS
 builder.Services.AddCors(options =>
