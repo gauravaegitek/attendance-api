@@ -462,6 +462,7 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IPdfService, PdfService>();
 builder.Services.AddScoped<IDocumentPdfService, DocumentPdfService>();
+builder.Services.AddScoped<IPayrollExportService, PayrollExportService>();
 
 // ✅ Configure CORS
 builder.Services.AddCors(options =>
