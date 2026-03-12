@@ -3458,8 +3458,11 @@ namespace attendance_api.Controllers
             // ── Present days ──────────────────────────────────────────────
             // ALL attendance records count (including Sat/Sun = reduces absent days)
             // Cap at totalWorkingDays to avoid negative absents
-            int presentDays = Math.Min(attendanceList.Count, totalWorkingDays);
-            int absentDays  = Math.Max(0, totalWorkingDays - presentDays);
+            // int presentDays = Math.Min(attendanceList.Count, totalWorkingDays);
+            // int absentDays  = Math.Max(0, totalWorkingDays - presentDays);
+            // ✅ SAHI
+            int presentDays = attendanceList.Count;
+            int absentDays  = Math.Max(0, totalCalendarDays - presentDays);
 
             // ── Late: InTime after lateCutoff → ½ day deduction ──────────
             int lateDays = attendanceList.Count(a =>
